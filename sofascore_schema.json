@@ -1,0 +1,580 @@
+{
+  "tournaments": [
+    {
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 1
+    },
+    {
+      "name": "unique_tournament_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "name",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "slug",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "category_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "season_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "season_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "season_year",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    }
+  ],
+  "sqlite_sequence": [
+    {
+      "name": "name",
+      "type": "",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "seq",
+      "type": "",
+      "notnull": 0,
+      "pk": 0
+    }
+  ],
+  "clubs": [
+    {
+      "name": "team_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 1
+    },
+    {
+      "name": "name",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "short_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "slug",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "gender",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "name_code",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "disabled",
+      "type": "BOOLEAN",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "national",
+      "type": "BOOLEAN",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "type",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "primary_color",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "secondary_color",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    }
+  ],
+  "matches": [
+    {
+      "name": "match_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 1
+    },
+    {
+      "name": "tournament_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "season_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "round_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "home_team_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "away_team_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "home_team_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "away_team_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "match_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "status_code",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "home_score",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "away_score",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    }
+  ],
+  "players": [
+    {
+      "name": "player_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 1
+    },
+    {
+      "name": "name",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "slug",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "short_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "team_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "position",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "jersey_number",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "height",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "country_alpha3",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "date_of_birth_timestamp",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "market_value",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "last_updated_match_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    }
+  ],
+  "match_stats_log": [
+    {
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 1
+    },
+    {
+      "name": "match_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "period",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "metric_key",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "metric_name_pt",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "home_value",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "away_value",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    }
+  ],
+  "player_stats_log": [
+    {
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 1
+    },
+    {
+      "name": "match_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "player_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "team_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "position",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "metric_key",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "metric_name_pt",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "value",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    }
+  ],
+  "match_shots": [
+    {
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 1
+    },
+    {
+      "name": "match_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "player_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "player_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "is_home_team",
+      "type": "BOOLEAN",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "shot_type",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "situation",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "body_part",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "goal_mouth_location",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "x_coord",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "y_coord",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "goal_mouth_x",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "goal_mouth_y",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "goal_mouth_z",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "time_min",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    }
+  ],
+  "match_spatial_actions": [
+    {
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 1
+    },
+    {
+      "name": "match_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "player_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "action_type",
+      "type": "TEXT",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "x_start",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "y_start",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "x_end",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "y_end",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "outcome",
+      "type": "BOOLEAN",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "keypass",
+      "type": "BOOLEAN",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "is_assist",
+      "type": "BOOLEAN",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "time_min",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    }
+  ],
+  "match_average_positions": [
+    {
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 1
+    },
+    {
+      "name": "match_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "player_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "avg_x",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "avg_y",
+      "type": "REAL",
+      "notnull": 0,
+      "pk": 0
+    },
+    {
+      "name": "points_count",
+      "type": "INTEGER",
+      "notnull": 0,
+      "pk": 0
+    }
+  ]
+}
