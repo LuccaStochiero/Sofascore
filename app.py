@@ -3,7 +3,9 @@ import pandas as pd
 import numpy as np
 import datetime
 import pandas_gbq
+from google.oauth2 import service_account
 from sofascore_metrics import METRICS_CONFIG, get_metric_info
+import json
 
 # --- Configuration ---
 st.set_page_config(page_title="Sofascore Analytics", layout="wide", page_icon="📈")
@@ -33,20 +35,36 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Helper Functions (BigQuery) ---
+# Authentication setup
+@st.cache_resource
+def get_bq_credentials():
+    # Check if running on Streamlit Cloud (has st.secrets)
+    if "gcp_service_account" in st.secrets:
+        # Create credentials from Streamlit secrets
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        return service_account.Credentials.from_service_account_info(creds_dict)
+    else:
+        # Fallback to local Application Default Credentials (ADC) or credentials.json
+        # Since local machine works currently, pandas_gbq will automatically 
+        # use the active gcloud authenticated user if we return None.
+        return None
+
+credentials = get_bq_credentials()
+
 @st.cache_data(ttl=3600*24)
 def load_base_data():
     q_tournaments = f"SELECT * FROM `{PROJECT_ID}.{DATASET_ID}.tournaments`"
-    df_tournaments = pandas_gbq.read_gbq(q_tournaments, project_id=PROJECT_ID).drop_duplicates(subset=['unique_tournament_id', 'season_id'])
+    df_tournaments = pandas_gbq.read_gbq(q_tournaments, project_id=PROJECT_ID, credentials=credentials).drop_duplicates(subset=['unique_tournament_id', 'season_id'])
     
     q_matches = f"SELECT match_id, tournament_id, season_id, round_id, match_date, home_team_id, away_team_id, home_team_name, away_team_name, round_name, round_slug FROM `{PROJECT_ID}.{DATASET_ID}.matches`"
-    df_matches = pandas_gbq.read_gbq(q_matches, project_id=PROJECT_ID).drop_duplicates(subset=['match_id'])
+    df_matches = pandas_gbq.read_gbq(q_matches, project_id=PROJECT_ID, credentials=credentials).drop_duplicates(subset=['match_id'])
     df_matches['match_date'] = pd.to_datetime(df_matches['match_date'], unit='s')
     
     q_clubs = f"SELECT team_id, name FROM `{PROJECT_ID}.{DATASET_ID}.clubs`"
-    df_clubs = pandas_gbq.read_gbq(q_clubs, project_id=PROJECT_ID).drop_duplicates(subset=['team_id'])
+    df_clubs = pandas_gbq.read_gbq(q_clubs, project_id=PROJECT_ID, credentials=credentials).drop_duplicates(subset=['team_id'])
     
     q_players = f"SELECT player_id, team_id, name, position FROM `{PROJECT_ID}.{DATASET_ID}.players`"
-    df_players = pandas_gbq.read_gbq(q_players, project_id=PROJECT_ID).drop_duplicates(subset=['player_id'])
+    df_players = pandas_gbq.read_gbq(q_players, project_id=PROJECT_ID, credentials=credentials).drop_duplicates(subset=['player_id'])
     
     return df_tournaments, df_matches, df_clubs, df_players
 
@@ -115,7 +133,7 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
         HAVING sum_val IS NOT NULL
         """
         
-    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID)
+    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID, credentials=credentials)
     if df.empty: return df
     
     if metric_source == 'player':
@@ -173,7 +191,7 @@ def fetch_player_general_stats_sql(metric_key, match_ids, club_stat_type, agg_sc
     GROUP BY psl.player_id, p.name {group_tourn}
     HAVING Jogos >= {min_games} AND Minutos >= {min_minutes}
     """
-    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID)
+    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID, credentials=credentials)
     if df.empty: return df
 
     if calc_mode == "Total":
@@ -249,7 +267,7 @@ def fetch_club_single_match_sql(metric_key, metric_source, match_ids, club_stat_
         LIMIT {top_n}
         """
         
-    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID)
+    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID, credentials=credentials)
     if not df.empty:
         df['Data'] = pd.to_datetime(df['Data']).dt.strftime('%d/%m/%Y')
     return df
@@ -298,7 +316,7 @@ def fetch_combined_match_sql(metric_key, metric_source, match_ids, sort_order, t
         LIMIT {top_n}
         """
         
-    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID)
+    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID, credentials=credentials)
     if not df.empty:
         df['Data'] = pd.to_datetime(df['Data']).dt.strftime('%d/%m/%Y')
     return df
@@ -341,7 +359,7 @@ def fetch_player_match_sql(metric_key, match_ids, club_stat_type, sort_order, to
     ORDER BY Valor {"DESC" if sort_order == "DESC" else "ASC"}
     LIMIT {top_n}
     """
-    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID)
+    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID, credentials=credentials)
     if not df.empty:
         df['Data'] = pd.to_datetime(df['Data']).dt.strftime('%d/%m/%Y')
     return df
@@ -405,7 +423,7 @@ def fetch_player_streaks_sql(metric_key, match_ids, club_stat_type, valid_team_i
     GROUP BY pg.Entity, pg.player_id, pg.match_date, pg.home_team_name, pg.away_team_name, pg.team_id, pg.minutes
     ORDER BY pg.Entity, pg.match_date
     """
-    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID)
+    df = pandas_gbq.read_gbq(query, project_id=PROJECT_ID, credentials=credentials)
     return df
 
 # Load into memory
