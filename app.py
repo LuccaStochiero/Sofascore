@@ -39,15 +39,18 @@ st.markdown("""
 @st.cache_resource
 def get_bq_credentials():
     # Check if running on Streamlit Cloud (has st.secrets)
-    if "gcp_service_account" in st.secrets:
-        # Create credentials from Streamlit secrets
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        return service_account.Credentials.from_service_account_info(creds_dict)
-    else:
-        # Fallback to local Application Default Credentials (ADC) or credentials.json
-        # Since local machine works currently, pandas_gbq will automatically 
-        # use the active gcloud authenticated user if we return None.
-        return None
+    try:
+        if "gcp_service_account" in st.secrets:
+            # Create credentials from Streamlit secrets
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            return service_account.Credentials.from_service_account_info(creds_dict)
+    except Exception:
+        pass
+        
+    # Fallback to local Application Default Credentials (ADC) or credentials.json
+    # Since local machine works currently, pandas_gbq will automatically 
+    # use the active gcloud authenticated user if we return None.
+    return None
 
 credentials = get_bq_credentials()
 
