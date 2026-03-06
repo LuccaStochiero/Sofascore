@@ -120,10 +120,14 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
         query = f"""
         WITH unpivoted AS (
             SELECT m.match_id, m.home_team_id as team_id, m.home_team_name as Club {part_tourn}
-            FROM `{PROJECT_ID}.{DATASET_ID}.matches` m {join_tourn} WHERE m.match_id IN ({match_ids_str})
+            FROM `{PROJECT_ID}.{DATASET_ID}.matches` m {join_tourn} 
+            WHERE m.match_id IN ({match_ids_str})
+              AND EXISTS (SELECT 1 FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl2 WHERE psl2.match_id = m.match_id)
             UNION ALL
             SELECT m.match_id, m.away_team_id as team_id, m.away_team_name as Club {part_tourn}
-            FROM `{PROJECT_ID}.{DATASET_ID}.matches` m {join_tourn} WHERE m.match_id IN ({match_ids_str})
+            FROM `{PROJECT_ID}.{DATASET_ID}.matches` m {join_tourn} 
+            WHERE m.match_id IN ({match_ids_str})
+              AND EXISTS (SELECT 1 FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl2 WHERE psl2.match_id = m.match_id)
         )
         SELECT unp.Club {", unp.Comp, unp.Temp" if agg_scope == 'Separado por Temporada' else ""},
                COUNT(DISTINCT unp.match_id) as Jogos,
