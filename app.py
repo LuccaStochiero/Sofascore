@@ -81,9 +81,17 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
         team_ids_str = ",".join(map(str, valid_team_ids))
         team_filter = f"AND team_id IN ({team_ids_str})"
         
-    part_tourn = ", m.tournament_id as CampID, m.season_id as TempID, t.name as Comp, t.season_year as Temp" if agg_scope == 'Separado por Temporada' else ""
-    join_tourn = f"JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id" if agg_scope == 'Separado por Temporada' else ""
-    group_tourn = ", m.tournament_id, m.season_id, t.name, t.season_year" if agg_scope == 'Separado por Temporada' else ""
+    part_tourn = ""
+    join_tourn = ""
+    group_tourn = ""
+    if agg_scope == "Separado por Temporada e Competição (Ano e Competição)":
+        part_tourn = ", m.tournament_id as CampID, m.season_id as TempID, t.name as Comp, t.season_year as Temp"
+        join_tourn = f"JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id"
+        group_tourn = ", m.tournament_id, m.season_id, t.name, t.season_year"
+    elif agg_scope == "Separado por Temporada (Apenas o ano)":
+        part_tourn = ", m.season_id as TempID, t.season_year as Temp"
+        join_tourn = f"JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id"
+        group_tourn = ", m.season_id, t.season_year"
     
     if metric_source == 'match':
         val_col = "home_value" if club_stat_type == "Feito (Pró)" else "away_value"
@@ -105,11 +113,11 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
             {join_tourn}
             WHERE ms.metric_key = '{metric_key}' AND m.match_id IN ({match_ids_str})
         )
-        SELECT Club {", Comp, Temp" if agg_scope == 'Separado por Temporada' else ""}, 
+        SELECT Club {", Comp, Temp" if agg_scope == "Separado por Temporada e Competição (Ano e Competição)" else ", Temp" if agg_scope == "Separado por Temporada (Apenas o ano)" else ""}, 
                COUNT(Value) as Jogos, SUM(Value) as sum_val, AVG(Value) as avg_val 
         FROM unpivoted
         WHERE Value IS NOT NULL {team_filter}
-        GROUP BY Club {", Comp, Temp" if agg_scope == 'Separado por Temporada' else ""}
+        GROUP BY Club {", Comp, Temp" if agg_scope == "Separado por Temporada e Competição (Ano e Competição)" else ", Temp" if agg_scope == "Separado por Temporada (Apenas o ano)" else ""}
         """
     else: 
         if club_stat_type == "Feito (Pró)":
@@ -129,14 +137,14 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
             WHERE m.match_id IN ({match_ids_str})
               AND EXISTS (SELECT 1 FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl2 WHERE psl2.match_id = m.match_id)
         )
-        SELECT unp.Club {", unp.Comp, unp.Temp" if agg_scope == 'Separado por Temporada' else ""},
+        SELECT unp.Club {", unp.Comp, unp.Temp" if agg_scope == "Separado por Temporada e Competição (Ano e Competição)" else ", unp.Temp" if agg_scope == "Separado por Temporada (Apenas o ano)" else ""},
                COUNT(DISTINCT unp.match_id) as Jogos,
                SUM(CASE WHEN psl.metric_key = '{metric_key}' THEN CAST(psl.value AS FLOAT64) ELSE 0 END) as sum_val
         FROM unpivoted unp
         LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl 
           ON psl.match_id = unp.match_id {team_condition} AND psl.metric_key = '{metric_key}'
         WHERE 1=1 {team_filter.replace('team_id', 'unp.team_id')}
-        GROUP BY unp.Club {", unp.Comp, unp.Temp" if agg_scope == 'Separado por Temporada' else ""}
+        GROUP BY unp.Club {", unp.Comp, unp.Temp" if agg_scope == "Separado por Temporada e Competição (Ano e Competição)" else ", unp.Temp" if agg_scope == "Separado por Temporada (Apenas o ano)" else ""}
         HAVING sum_val IS NOT NULL
         """
         
@@ -175,9 +183,17 @@ def fetch_player_general_stats_sql(metric_key, match_ids, club_stat_type, agg_sc
     where_clause = " AND ".join(filters)
     if where_clause: where_clause = " AND " + where_clause
     
-    part_tourn = ", t.name as Comp, t.season_year as Temp" if agg_scope == 'Separado por Temporada' else ""
-    join_tourn = f"JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id" if agg_scope == 'Separado por Temporada' else ""
-    group_tourn = ", t.name, t.season_year" if agg_scope == 'Separado por Temporada' else ""
+    part_tourn = ""
+    join_tourn = ""
+    group_tourn = ""
+    if agg_scope == "Separado por Temporada e Competição (Ano e Competição)":
+        part_tourn = ", t.name as Comp, t.season_year as Temp"
+        join_tourn = f"JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id"
+        group_tourn = ", t.name, t.season_year"
+    elif agg_scope == "Separado por Temporada (Apenas o ano)":
+        part_tourn = ", t.season_year as Temp"
+        join_tourn = f"JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id"
+        group_tourn = ", t.season_year"
 
     query = f"""
     SELECT 
@@ -605,7 +621,7 @@ with st.sidebar.expander("Modos e Escopos", expanded=False):
     record_type = st.radio("Tipo de Ordenação", ["Maior (Positivo)", "Menor (Negativo)"])
 
     # Aggregation Scope
-    agg_scope = st.radio("Escopo de Agregação", ["Acumulado (Tudo)", "Separado por Temporada"])
+    agg_scope = st.radio("Escopo de Agregação", ["Acumulado (Tudo)", "Separado por Temporada (Apenas o ano)", "Separado por Temporada e Competição (Ano e Competição)"])
 
     # Club Stat Type (For/Against)
     st.markdown("### Perspectiva do Clube")
@@ -746,8 +762,10 @@ with tab_records:
                 
                 if not df_p_agg.empty:
                     cols_to_show = ['Jogador', 'Clube', 'Pos']
-                    if agg_scope == "Separado por Temporada":
+                    if agg_scope == "Separado por Temporada e Competição (Ano e Competição)":
                         cols_to_show += ['Comp', 'Temp']
+                    elif agg_scope == "Separado por Temporada (Apenas o ano)":
+                        cols_to_show += ['Temp']
                     cols_to_show += ['Jogos', 'Minutos', 'Valor']
                     
                     st.dataframe(df_p_agg[cols_to_show].style.format({"Valor": "{:.2f}", "Minutos": "{:.0f}"}), width="stretch", hide_index=True)
