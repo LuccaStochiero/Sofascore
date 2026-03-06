@@ -137,11 +137,13 @@ def fetch_json(url):
 def insert_tournaments(event):
     tournament = event.get('tournament', {}).get('uniqueTournament', {})
     t_id = tournament.get('id')
-    
-    if not t_id or t_id in local_seen_tournaments: return
-    local_seen_tournaments.add(t_id)
-    
     season = event.get('season', {})
+    s_id = season.get('id')
+    
+    seen_key = f"{t_id}_{s_id}"
+    if not t_id or seen_key in local_seen_tournaments: return
+    local_seen_tournaments.add(seen_key)
+    
     category = event.get('tournament', {}).get('category', {})
     
     new_tournaments.append({
@@ -324,30 +326,77 @@ def upsert_to_bq(new_data, table_name, primary_key):
     df_new = pd.DataFrame(new_data)
     print(f"-- Sincronizando tabela {table_name} ({len(df_new)} novos registros)...")
     
+    if isinstance(primary_key, str):
+        primary_key = [primary_key]
+    
     try:
         query = f"SELECT * FROM `{PROJECT_ID}.{DATASET_ID}.{table_name}`"
         df_old = pandas_gbq.read_gbq(query, project_id=PROJECT_ID)
         
         combined = pd.concat([df_old, df_new], ignore_index=True)
-        combined.drop_duplicates(subset=[primary_key], keep='last', inplace=True)
+        combined.drop_duplicates(subset=primary_key, keep='last', inplace=True)
         
         pandas_gbq.to_gbq(combined, destination_table=f"{DATASET_ID}.{table_name}", project_id=PROJECT_ID, if_exists='replace')
         print(f"   -> Tabela {table_name} atualizada no BigQuery. Total: {len(combined)} registros.")
     except Exception as e:
         print(f"   -> Tabela inexistente no BQ ou erro, criando nova: {e}")
+        df_new.drop_duplicates(subset=primary_key, keep='last', inplace=True)
         pandas_gbq.to_gbq(df_new, destination_table=f"{DATASET_ID}.{table_name}", project_id=PROJECT_ID, if_exists='replace')
 
-def append_to_bq(new_data, table_name):
+def sync_stats_to_bq(new_data, table_name, fetched_match_ids):
     if not new_data:
+        print(f"-- Nenhuma alteração adicionada à {table_name}.")
         return
-    df = pd.DataFrame(new_data)
-    print(f"-- Adicionando {len(df)} registros na tabela {table_name}...")
-    pandas_gbq.to_gbq(df, destination_table=f"{DATASET_ID}.{table_name}", project_id=PROJECT_ID, if_exists='append')
+    df_new = pd.DataFrame(new_data)
+    print(f"-- Adicionando/Atualizando {len(df_new)} registros na tabela {table_name}...")
+    
+    if FORCE_UPDATE_ALL:
+        try:
+            query = f"SELECT * FROM `{PROJECT_ID}.{DATASET_ID}.{table_name}`"
+            df_old = pandas_gbq.read_gbq(query, project_id=PROJECT_ID)
+            
+            # Remove existing rows for the freshly fetched matches
+            df_old = df_old[~df_old['match_id'].isin(fetched_match_ids)]
+            
+            combined = pd.concat([df_old, df_new], ignore_index=True)
+            pandas_gbq.to_gbq(combined, destination_table=f"{DATASET_ID}.{table_name}", project_id=PROJECT_ID, if_exists='replace')
+            print(f"   -> Tabela atualizada no BigQuery (Matches antigos limpos antes de adicionar novos). Total: {len(combined)} registros.")
+        except Exception as e:
+            print(f"   -> Tabela {table_name} inexistente no BQ ou erro, criando nova: {e}")
+            pandas_gbq.to_gbq(df_new, destination_table=f"{DATASET_ID}.{table_name}", project_id=PROJECT_ID, if_exists='replace')
+    else:
+        try:
+            pandas_gbq.to_gbq(df_new, destination_table=f"{DATASET_ID}.{table_name}", project_id=PROJECT_ID, if_exists='append')
+            print(f"   -> Novos registros adicionados (append) à tabela {table_name}.")
+        except Exception as e:
+            print(f"   -> Tabela inexistente no BQ ou erro, criando nova: {e}")
+            pandas_gbq.to_gbq(df_new, destination_table=f"{DATASET_ID}.{table_name}", project_id=PROJECT_ID, if_exists='replace')
 
 def run_crawler():
     TOURNAMENTS = [
+        # Mineiro (2026 - 2020)
         {'id': 379, 'season_id': 87236, 'name': 'Mineiro 2026'},
+        {'id': 379, 'season_id': 69911, 'name': 'Mineiro 2025'},
+        {'id': 379, 'season_id': 58023, 'name': 'Mineiro 2024'},
+        {'id': 379, 'season_id': 47248, 'name': 'Mineiro 2023'},
+        {'id': 379, 'season_id': 40367, 'name': 'Mineiro 2022'},
+        {'id': 379, 'season_id': 35198, 'name': 'Mineiro 2021'},
+        {'id': 379, 'season_id': 26563, 'name': 'Mineiro 2020'},
+        
+        # Brasileirão (2026 - 2016)
         {'id': 325, 'season_id': 87678, 'name': 'Brasileirão 2026'},
+        {'id': 325, 'season_id': 69805, 'name': 'Brasileirão 2025'},
+        {'id': 325, 'season_id': 58766, 'name': 'Brasileirão 2024'},
+        {'id': 325, 'season_id': 48982, 'name': 'Brasileirão 2023'},
+        {'id': 325, 'season_id': 40557, 'name': 'Brasileirão 2022'},
+        {'id': 325, 'season_id': 36166, 'name': 'Brasileirão 2021'},
+        {'id': 325, 'season_id': 32585, 'name': 'Brasileirão 2020'},
+        {'id': 325, 'season_id': 22904, 'name': 'Brasileirão 2019'},
+        {'id': 325, 'season_id': 16183, 'name': 'Brasileirão 2018'},
+        {'id': 325, 'season_id': 13075, 'name': 'Brasileirão 2017'},
+        {'id': 325, 'season_id': 11429, 'name': 'Brasileirão 2016'},
+
+        # Libertadores (2026 - 2018)
         {'id': 384, 'season_id': 87760, 'name': 'Libertadores 2026'},
         {'id': 384, 'season_id': 70083, 'name': 'Libertadores 2025'},
         {'id': 384, 'season_id': 57296, 'name': 'Libertadores 2024'},
@@ -365,6 +414,7 @@ def run_crawler():
     print(f"Encontradas {len(existing_matches)} partidas processadas no BigQuery.")
     
     total_new = 0
+    fetched_match_ids = set()
 
     for tourn in TOURNAMENTS:
         t_id = tourn['id']
@@ -413,6 +463,7 @@ def run_crawler():
 
                     print(f"    Extraindo Partida: {event.get('homeTeam').get('name')} vs {event.get('awayTeam').get('name')}")
                     
+                    fetched_match_ids.add(m_id)
                     process_stats(m_id)
                     process_lineups(m_id, event.get('homeTeam').get('id'), event.get('awayTeam').get('id'))
                     
@@ -425,13 +476,13 @@ def run_crawler():
     print("Atualizando dados no Google BigQuery...")
     print("========================================")
     
-    upsert_to_bq(new_tournaments, 'tournaments', 'unique_tournament_id')
+    upsert_to_bq(new_tournaments, 'tournaments', ['unique_tournament_id', 'season_id'])
     upsert_to_bq(new_clubs, 'clubs', 'team_id')
     upsert_to_bq(new_matches, 'matches', 'match_id')
-    upsert_to_bq(new_players, 'players', 'player_id')
+    upsert_to_bq(new_players, 'players', ['player_id', 'team_id'])
     
-    append_to_bq(new_match_stats_log, 'match_stats_log')
-    append_to_bq(new_player_stats_log, 'player_stats_log')
+    sync_stats_to_bq(new_match_stats_log, 'match_stats_log', fetched_match_ids)
+    sync_stats_to_bq(new_player_stats_log, 'player_stats_log', fetched_match_ids)
     
     print(f"\nExtração e atualização finalizadas com sucesso! Partidas novas adicionadas: {total_new}")
 

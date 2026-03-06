@@ -92,7 +92,7 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
         query = f"""
         WITH unpivoted AS (
             SELECT m.match_id, m.home_team_id as team_id, m.home_team_name as Club, 
-                   CAST(ms.{val_col} AS FLOAT64) as Value {part_tourn.replace('CampID', '"CampID"').replace('TempID', '"TempID"').replace('Comp', '"Comp"').replace('Temp', '"Temp"')}
+                   CAST(ms.{val_col} AS FLOAT64) as Value {part_tourn}
             FROM `{PROJECT_ID}.{DATASET_ID}.matches` m JOIN `{PROJECT_ID}.{DATASET_ID}.match_stats_log` ms ON m.match_id = ms.match_id
             {join_tourn}
             WHERE ms.metric_key = '{metric_key}' AND m.match_id IN ({match_ids_str})
@@ -100,7 +100,7 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
             UNION ALL
             
             SELECT m.match_id, m.away_team_id as team_id, m.away_team_name as Club, 
-                   CAST(ms.{val_col_opp} AS FLOAT64) as Value {part_tourn.replace('CampID', '"CampID"').replace('TempID', '"TempID"').replace('Comp', '"Comp"').replace('Temp', '"Temp"')}
+                   CAST(ms.{val_col_opp} AS FLOAT64) as Value {part_tourn}
             FROM `{PROJECT_ID}.{DATASET_ID}.matches` m JOIN `{PROJECT_ID}.{DATASET_ID}.match_stats_log` ms ON m.match_id = ms.match_id
             {join_tourn}
             WHERE ms.metric_key = '{metric_key}' AND m.match_id IN ({match_ids_str})
@@ -119,10 +119,10 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
             
         query = f"""
         WITH unpivoted AS (
-            SELECT m.match_id, m.home_team_id as team_id, m.home_team_name as Club {part_tourn.replace('CampID', '"CampID"').replace('TempID', '"TempID"').replace('Comp', '"Comp"').replace('Temp', '"Temp"')}
+            SELECT m.match_id, m.home_team_id as team_id, m.home_team_name as Club {part_tourn}
             FROM `{PROJECT_ID}.{DATASET_ID}.matches` m {join_tourn} WHERE m.match_id IN ({match_ids_str})
             UNION ALL
-            SELECT m.match_id, m.away_team_id as team_id, m.away_team_name as Club {part_tourn.replace('CampID', '"CampID"').replace('TempID', '"TempID"').replace('Comp', '"Comp"').replace('Temp', '"Temp"')}
+            SELECT m.match_id, m.away_team_id as team_id, m.away_team_name as Club {part_tourn}
             FROM `{PROJECT_ID}.{DATASET_ID}.matches` m {join_tourn} WHERE m.match_id IN ({match_ids_str})
         )
         SELECT unp.Club {", unp.Comp, unp.Temp" if agg_scope == 'Separado por Temporada' else ""},
@@ -696,9 +696,9 @@ with tab_records:
                 
                 if not df_c_agg.empty:
                     if "Posse" in sel_metric or "%" in sel_metric:
-                        st.dataframe(df_c_agg.style.format({"Valor": "{:.1f}%"}), use_container_width=True, hide_index=True)
+                        st.dataframe(df_c_agg.style.format({"Valor": "{:.1f}%"}), width="stretch", hide_index=True)
                     else:
-                        st.dataframe(df_c_agg.style.format({"Valor": "{:.2f}"}), use_container_width=True, hide_index=True)
+                        st.dataframe(df_c_agg.style.format({"Valor": "{:.2f}"}), width="stretch", hide_index=True)
                 else:
                     st.info("Sem dados")
             else:
@@ -746,7 +746,7 @@ with tab_records:
                         cols_to_show += ['Comp', 'Temp']
                     cols_to_show += ['Jogos', 'Minutos', 'Valor']
                     
-                    st.dataframe(df_p_agg[cols_to_show].style.format({"Valor": "{:.2f}", "Minutos": "{:.0f}"}), use_container_width=True, hide_index=True)
+                    st.dataframe(df_p_agg[cols_to_show].style.format({"Valor": "{:.2f}", "Minutos": "{:.0f}"}), width="stretch", hide_index=True)
                 else:
                     st.info("A métrica não retornou dados com os filtros atuais.")
             else:
@@ -773,9 +773,9 @@ with tab_records:
                     
                 if not df_combined.empty:
                     if "Posse" in sel_metric or "%" in sel_metric:
-                         st.dataframe(df_combined.style.format({"Valor": "{:.1f}%"}), use_container_width=True, hide_index=True)
+                         st.dataframe(df_combined.style.format({"Valor": "{:.1f}%"}), width="stretch", hide_index=True)
                     else:
-                         st.dataframe(df_combined, use_container_width=True, hide_index=True)
+                         st.dataframe(df_combined, width="stretch", hide_index=True)
                 else:
                     st.info("Sem dados")
             else:
@@ -803,9 +803,9 @@ with tab_records:
                     
                 if not df_c_match.empty:
                     if "Posse" in sel_metric or "%" in sel_metric:
-                         st.dataframe(df_c_match.style.format({"Valor": "{:.1f}%"}), use_container_width=True, hide_index=True)
+                         st.dataframe(df_c_match.style.format({"Valor": "{:.1f}%"}), width="stretch", hide_index=True)
                     else:
-                         st.dataframe(df_c_match, use_container_width=True, hide_index=True)
+                         st.dataframe(df_c_match, width="stretch", hide_index=True)
                 else:
                     st.info("Sem dados")
             else:
@@ -834,7 +834,7 @@ with tab_records:
                 )
                     
                 if not df_p_match.empty:
-                    st.dataframe(df_p_match, use_container_width=True, hide_index=True)
+                    st.dataframe(df_p_match, width="stretch", hide_index=True)
                 else:
                     st.info("Sem dados")
             else:
@@ -960,7 +960,7 @@ with tab_streaks:
                 
                 st.dataframe(
                     df_res[cols_to_show].style.format({"% Sucesso": "{:.1f}%", "Minutos": "{:.0f}"}),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True
                 )
                 
@@ -1010,14 +1010,14 @@ with tab_streaks:
                         with c_cur:
                             st.caption(f"Sequência Atual ({row['Sequência Atual']} jogos)")
                             if not df_current_matches.empty:
-                                st.dataframe(df_current_matches, hide_index=True, use_container_width=True)
+                                st.dataframe(df_current_matches, hide_index=True, width="stretch")
                             else:
                                 st.write("-")
     
                         with c_best:
                             st.caption(f"Melhor Sequência ({row['Maior Seq. (Sucesso)']} jogos)")
                             if not df_best_matches.empty:
-                                st.dataframe(df_best_matches, hide_index=True, use_container_width=True)
+                                st.dataframe(df_best_matches, hide_index=True, width="stretch")
                             else:
                                 st.write("Nenhuma sequência positiva.")
         else:
