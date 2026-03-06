@@ -109,7 +109,7 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
                COUNT(Value) as Jogos, SUM(Value) as sum_val, AVG(Value) as avg_val 
         FROM unpivoted
         WHERE Value IS NOT NULL {team_filter}
-        GROUP BY Club {group_tourn}
+        GROUP BY Club {", Comp, Temp" if agg_scope == 'Separado por Temporada' else ""}
         """
     else: 
         if club_stat_type == "Feito (Pró)":
@@ -132,7 +132,7 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
         LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl 
           ON psl.match_id = unp.match_id {team_condition} AND psl.metric_key = '{metric_key}'
         WHERE 1=1 {team_filter.replace('team_id', 'unp.team_id')}
-        GROUP BY unp.Club {group_tourn.replace(' m.', ' unp.').replace(' t.', ' unp.')}
+        GROUP BY unp.Club {", unp.Comp, unp.Temp" if agg_scope == 'Separado por Temporada' else ""}
         HAVING sum_val IS NOT NULL
         """
         
