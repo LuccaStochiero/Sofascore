@@ -376,7 +376,7 @@ def run_crawler():
     TOURNAMENTS = [
         {'id': 379, 'season_id': 87236, 'name': 'Mineiro 2026'},
         {'id': 325, 'season_id': 87678, 'name': 'Brasileirão 2026'},
-        {'id': 384, 'season_id': 87760, 'name': 'Libertadores 2026'}
+        {'id': 384, 'season_id': 87760, 'name': 'Libertadores 2026'},
     ]
 
     print(f"Starting API Data Extraction to BigQuery...")
