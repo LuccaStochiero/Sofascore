@@ -206,7 +206,7 @@ def fetch_player_general_stats_sql(metric_key, match_ids, club_stat_type, agg_sc
         SUM(CASE WHEN psl.metric_key = '{metric_key}' THEN CAST(psl.value AS FLOAT64) ELSE 0 END) as Valor_Total
     FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
     JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON m.match_id = psl.match_id
-    JOIN `{PROJECT_ID}.{DATASET_ID}.players` p ON p.player_id = psl.player_id
+    JOIN (SELECT player_id, MAX(name) as name, MAX(position) as position FROM `{PROJECT_ID}.{DATASET_ID}.players` GROUP BY player_id) p ON p.player_id = psl.player_id
     {join_tourn}
     WHERE psl.match_id IN ({match_ids_str}) 
       AND psl.metric_key IN ('{metric_key}', 'minutesPlayed')
@@ -377,7 +377,7 @@ def fetch_player_match_sql(metric_key, match_ids, club_stat_type, sort_order, to
         CAST(psl.value AS FLOAT64) as Valor
     FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
     JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON m.match_id = psl.match_id
-    JOIN `{PROJECT_ID}.{DATASET_ID}.players` p ON p.player_id = psl.player_id
+    JOIN (SELECT player_id, MAX(name) as name, MAX(position) as position FROM `{PROJECT_ID}.{DATASET_ID}.players` GROUP BY player_id) p ON p.player_id = psl.player_id
     WHERE psl.metric_key = '{metric_key}' AND psl.match_id IN ({match_ids_str}) {where_clause}
     ORDER BY Valor {"DESC" if sort_order == "DESC" else "ASC"}
     LIMIT {top_n}
@@ -424,7 +424,7 @@ def fetch_player_streaks_sql(metric_key, match_ids, club_stat_type, valid_team_i
             CAST(psl.value AS FLOAT64) as minutes
         FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
         JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON m.match_id = psl.match_id
-        JOIN `{PROJECT_ID}.{DATASET_ID}.players` p ON p.player_id = psl.player_id
+        JOIN (SELECT player_id, MAX(name) as name, MAX(position) as position FROM `{PROJECT_ID}.{DATASET_ID}.players` GROUP BY player_id) p ON p.player_id = psl.player_id
         WHERE psl.match_id IN ({match_ids_str})
           AND psl.metric_key = 'minutesPlayed'
           {where_clause}
