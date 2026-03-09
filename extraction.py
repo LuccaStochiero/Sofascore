@@ -374,39 +374,9 @@ def sync_stats_to_bq(new_data, table_name, fetched_match_ids):
 
 def run_crawler():
     TOURNAMENTS = [
-        # Mineiro (2026 - 2020)
         {'id': 379, 'season_id': 87236, 'name': 'Mineiro 2026'},
-        {'id': 379, 'season_id': 69911, 'name': 'Mineiro 2025'},
-        {'id': 379, 'season_id': 58023, 'name': 'Mineiro 2024'},
-        {'id': 379, 'season_id': 47248, 'name': 'Mineiro 2023'},
-        {'id': 379, 'season_id': 40367, 'name': 'Mineiro 2022'},
-        {'id': 379, 'season_id': 35198, 'name': 'Mineiro 2021'},
-        {'id': 379, 'season_id': 26563, 'name': 'Mineiro 2020'},
-        
-        # Brasileirão (2026 - 2016)
         {'id': 325, 'season_id': 87678, 'name': 'Brasileirão 2026'},
-        {'id': 325, 'season_id': 69805, 'name': 'Brasileirão 2025'},
-        {'id': 325, 'season_id': 58766, 'name': 'Brasileirão 2024'},
-        {'id': 325, 'season_id': 48982, 'name': 'Brasileirão 2023'},
-        {'id': 325, 'season_id': 40557, 'name': 'Brasileirão 2022'},
-        {'id': 325, 'season_id': 36166, 'name': 'Brasileirão 2021'},
-        {'id': 325, 'season_id': 32585, 'name': 'Brasileirão 2020'},
-        {'id': 325, 'season_id': 22904, 'name': 'Brasileirão 2019'},
-        {'id': 325, 'season_id': 16183, 'name': 'Brasileirão 2018'},
-        {'id': 325, 'season_id': 13075, 'name': 'Brasileirão 2017'},
-        {'id': 325, 'season_id': 11429, 'name': 'Brasileirão 2016'},
-
-        # Libertadores (2026 - 2018)
-        {'id': 384, 'season_id': 87760, 'name': 'Libertadores 2026'},
-        {'id': 384, 'season_id': 70083, 'name': 'Libertadores 2025'},
-        {'id': 384, 'season_id': 57296, 'name': 'Libertadores 2024'},
-        {'id': 384, 'season_id': 47974, 'name': 'Libertadores 2023'},
-        {'id': 384, 'season_id': 40174, 'name': 'Libertadores 2022'},
-        {'id': 384, 'season_id': 35576, 'name': 'Libertadores 2021'},
-        {'id': 384, 'season_id': 26785, 'name': 'Libertadores 2020'},
-        {'id': 384, 'season_id': 19989, 'name': 'Libertadores 2019'},
-        {'id': 384, 'season_id': 15806, 'name': 'Libertadores 2018'}
-    ]
+        {'id': 384, 'season_id': 87760, 'name': 'Libertadores 2026'}]
 
     print(f"Starting API Data Extraction to BigQuery...")
     

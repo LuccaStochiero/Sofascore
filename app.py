@@ -666,7 +666,10 @@ match_count = len(filtered_matches)
 
 # --- Tabs ---
 st.title(f"{sel_metric}")
-st.caption(f"Analisando **{match_count}** partidas com Google BigQuery.")
+st.caption(
+    f"Analisando **{match_count}** partidas com Google BigQuery.",
+    help="O número total reflete partidas agendadas/encontradas no período. As tabelas abaixo podem contar menos 'Jogos' se alguma partida não tiver dados estatísticos do Sofascore disponíveis para a métrica."
+)
 
 tab_records, tab_streaks = st.tabs(["🏆 Recordes & Rankings", "🔥 Forma & Sequências"])
 
