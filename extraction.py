@@ -376,7 +376,8 @@ def run_crawler():
     TOURNAMENTS = [
         {'id': 379, 'season_id': 87236, 'name': 'Mineiro 2026'},
         {'id': 325, 'season_id': 87678, 'name': 'Brasileirão 2026'},
-        {'id': 384, 'season_id': 87760, 'name': 'Libertadores 2026'}]
+        {'id': 384, 'season_id': 87760, 'name': 'Libertadores 2026'}
+    ]
 
     print(f"Starting API Data Extraction to BigQuery...")
     
@@ -427,7 +428,7 @@ def run_crawler():
                 insert_clubs(event.get('homeTeam', {}))
                 insert_clubs(event.get('awayTeam', {}))
                 
-                if status_code == 100:
+                if status_code in (100, 110, 120):
                     if m_id in existing_matches and not FORCE_UPDATE_ALL:
                         continue
 
