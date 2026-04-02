@@ -61,7 +61,10 @@ def load_base_data():
     
     q_matches = f"SELECT match_id, tournament_id, season_id, round_id, match_date, home_team_id, away_team_id, home_team_name, away_team_name, round_name, round_slug FROM `{PROJECT_ID}.{DATASET_ID}.matches`"
     df_matches = pandas_gbq.read_gbq(q_matches, project_id=PROJECT_ID, credentials=credentials).drop_duplicates(subset=['match_id'])
-    df_matches['match_date'] = pd.to_datetime(df_matches['match_date'], unit='s')
+    if pd.api.types.is_numeric_dtype(df_matches['match_date']):
+        df_matches['match_date'] = pd.to_datetime(df_matches['match_date'], unit='s', errors='coerce')
+    else:
+        df_matches['match_date'] = pd.to_datetime(df_matches['match_date'], errors='coerce', utc=True).dt.tz_localize(None)
     
     q_clubs = f"SELECT team_id, name FROM `{PROJECT_ID}.{DATASET_ID}.clubs`"
     df_clubs = pandas_gbq.read_gbq(q_clubs, project_id=PROJECT_ID, credentials=credentials).drop_duplicates(subset=['team_id'])
