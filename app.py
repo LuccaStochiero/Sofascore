@@ -62,10 +62,13 @@ def load_base_data():
     q_matches = f"SELECT match_id, tournament_id, season_id, round_id, match_date, home_team_id, away_team_id, home_team_name, away_team_name, round_name, round_slug FROM `{PROJECT_ID}.{DATASET_ID}.matches`"
     df_matches = pandas_gbq.read_gbq(q_matches, project_id=PROJECT_ID, credentials=credentials).drop_duplicates(subset=['match_id'])
     _numeric = pd.to_numeric(df_matches['match_date'], errors='coerce')
-    if _numeric.notna().mean() > 0.5:  # maioria são Unix timestamps numéricos (mesmo se dtype for object/string)
+    if _numeric.notna().mean() > 0.5:
+        # Armazenado como Unix timestamp (int nativo do BQ ou string numérica)
         df_matches['match_date'] = pd.to_datetime(_numeric, unit='s', errors='coerce')
     else:
-        df_matches['match_date'] = pd.to_datetime(df_matches['match_date'], errors='coerce', utc=True).dt.tz_localize(None)
+        # Armazenado como string de data (ex: "2026-03-15T20:00:00Z")
+        _parsed = pd.to_datetime(df_matches['match_date'], errors='coerce', utc=True)
+        df_matches['match_date'] = _parsed.dt.tz_convert(None)  # remove tz → naive UTC
     
     q_clubs = f"SELECT team_id, name FROM `{PROJECT_ID}.{DATASET_ID}.clubs`"
     df_clubs = pandas_gbq.read_gbq(q_clubs, project_id=PROJECT_ID, credentials=credentials).drop_duplicates(subset=['team_id'])
@@ -74,6 +77,14 @@ def load_base_data():
     df_players = pandas_gbq.read_gbq(q_players, project_id=PROJECT_ID, credentials=credentials).drop_duplicates(subset=['player_id'])
     
     return df_tournaments, df_matches, df_clubs, df_players
+
+def parse_match_date_series(series):
+    """Converte uma Series de match_date do BQ (int64 nativo ou string numérica) para datetime."""
+    _numeric = pd.to_numeric(series, errors='coerce')
+    if _numeric.notna().mean() > 0.5:
+        return pd.to_datetime(_numeric, unit='s', errors='coerce')
+    _parsed = pd.to_datetime(series, errors='coerce', utc=True)
+    return _parsed.dt.tz_convert(None)
 
 @st.cache_data(ttl=3600*24)
 def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat_type, agg_scope, calc_mode, sort_order, top_n, valid_team_ids=None):
@@ -1022,7 +1033,7 @@ with tab_streaks:
                         def format_matches(sub_df):
                             if sub_df.empty: return pd.DataFrame()
                             out = sub_df.copy()
-                            out['Data'] = pd.to_datetime(out['match_date'], unit='s').dt.strftime('%d/%m/%Y')
+                            out['Data'] = parse_match_date_series(out['match_date']).dt.strftime('%d/%m/%Y')
                             out['Jogo'] = out['home_team_name'] + ' vs ' + out['away_team_name']
                             return out[['Data', 'Jogo', 'value']].rename(columns={'value': 'Valor'})
     
