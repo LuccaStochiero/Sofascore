@@ -500,9 +500,10 @@ context_matches = df_matches[
 
 with st.sidebar.expander("📅 Período e Rodadas", expanded=False):
     # 2. Date Range
-    if not context_matches.empty:
-        db_min_date = context_matches['match_date'].min().date()
-        db_max_date = context_matches['match_date'].max().date()
+    valid_dates = context_matches['match_date'].dropna()
+    if not context_matches.empty and not valid_dates.empty:
+        db_min_date = valid_dates.min().date()
+        db_max_date = valid_dates.max().date()
         
         db_min_round = int(context_matches['round_id'].min()) if pd.notnull(context_matches['round_id'].min()) else 1
         db_max_round = int(context_matches['round_id'].max()) if pd.notnull(context_matches['round_id'].max()) else 38
