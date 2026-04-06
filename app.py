@@ -118,7 +118,7 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
                    CAST(ms.{val_col} AS FLOAT64) as Value {part_tourn}
             FROM `{PROJECT_ID}.{DATASET_ID}.matches` m JOIN `{PROJECT_ID}.{DATASET_ID}.match_stats_log` ms ON m.match_id = ms.match_id
             {join_tourn}
-            WHERE ms.metric_key = '{metric_key}' AND m.match_id IN ({match_ids_str})
+            WHERE ms.metric_key = '{metric_key}' AND ms.period = 'ALL' AND m.match_id IN ({match_ids_str})
             
             UNION ALL
             
@@ -126,7 +126,7 @@ def fetch_club_general_stats_sql(metric_key, metric_source, match_ids, club_stat
                    CAST(ms.{val_col_opp} AS FLOAT64) as Value {part_tourn}
             FROM `{PROJECT_ID}.{DATASET_ID}.matches` m JOIN `{PROJECT_ID}.{DATASET_ID}.match_stats_log` ms ON m.match_id = ms.match_id
             {join_tourn}
-            WHERE ms.metric_key = '{metric_key}' AND m.match_id IN ({match_ids_str})
+            WHERE ms.metric_key = '{metric_key}' AND ms.period = 'ALL' AND m.match_id IN ({match_ids_str})
         )
         SELECT Club {", Comp, Temp" if agg_scope == "Separado por Temporada e Competição (Ano e Competição)" else ", Temp" if agg_scope == "Separado por Temporada (Apenas o ano)" else ""}, 
                COUNT(Value) as Jogos, SUM(Value) as sum_val, AVG(Value) as avg_val 
@@ -262,7 +262,7 @@ def fetch_club_single_match_sql(metric_key, metric_source, match_ids, club_stat_
                    CONCAT(m.home_team_name, ' vs ', m.away_team_name) as Jogo,
                    CAST(ms.{val_col} AS FLOAT64) as Valor
             FROM `{PROJECT_ID}.{DATASET_ID}.matches` m JOIN `{PROJECT_ID}.{DATASET_ID}.match_stats_log` ms ON m.match_id = ms.match_id
-            WHERE ms.metric_key = '{metric_key}' AND m.match_id IN ({match_ids_str})
+            WHERE ms.metric_key = '{metric_key}' AND ms.period = 'ALL' AND m.match_id IN ({match_ids_str})
             
             UNION ALL
             
@@ -270,7 +270,7 @@ def fetch_club_single_match_sql(metric_key, metric_source, match_ids, club_stat_
                    CONCAT(m.home_team_name, ' vs ', m.away_team_name) as Jogo,
                    CAST(ms.{val_col_opp} AS FLOAT64) as Valor
             FROM `{PROJECT_ID}.{DATASET_ID}.matches` m JOIN `{PROJECT_ID}.{DATASET_ID}.match_stats_log` ms ON m.match_id = ms.match_id
-            WHERE ms.metric_key = '{metric_key}' AND m.match_id IN ({match_ids_str})
+            WHERE ms.metric_key = '{metric_key}' AND ms.period = 'ALL' AND m.match_id IN ({match_ids_str})
         )
         SELECT TIMESTAMP_SECONDS(CAST(match_date AS INT64)) as Data, Jogo, Clube, Valor
         FROM unpivoted
@@ -330,7 +330,7 @@ def fetch_combined_match_sql(metric_key, metric_source, match_ids, sort_order, t
             CAST(ms.home_value AS FLOAT64) + CAST(ms.away_value AS FLOAT64) as Valor
         FROM `{PROJECT_ID}.{DATASET_ID}.match_stats_log` ms
         JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON m.match_id = ms.match_id
-        WHERE ms.metric_key = '{metric_key}' AND ms.match_id IN ({match_ids_str}) {team_filter}
+        WHERE ms.metric_key = '{metric_key}' AND ms.period = 'ALL' AND ms.match_id IN ({match_ids_str}) {team_filter}
         ORDER BY Valor {"DESC" if sort_order == "DESC" else "ASC"}
         LIMIT {top_n}
         """
