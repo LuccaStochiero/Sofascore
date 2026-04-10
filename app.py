@@ -446,6 +446,24 @@ def fetch_club_category_stats(category, match_ids, valid_team_ids=None, group_mo
     return df_pivot
 
 @st.cache_data(ttl=3600*24)
+def get_dynamic_context_details(match_ids):
+    if not match_ids: return pd.DataFrame()
+    match_ids_str = ",".join(map(str, match_ids))
+    
+    query = f"""
+    SELECT psl.team_id, psl.player_id, MAX(p.name) as name,
+           MAX(c.name) as team_name, t.name as comp_name, t.season_year
+    FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
+    JOIN `{PROJECT_ID}.{DATASET_ID}.players` p ON psl.player_id = p.player_id
+    JOIN `{PROJECT_ID}.{DATASET_ID}.clubs` c ON c.team_id = psl.team_id
+    JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON psl.match_id = m.match_id
+    JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id
+    WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key = 'minutesPlayed'
+    GROUP BY psl.team_id, psl.player_id, t.name, t.season_year
+    """
+    return pandas_gbq.read_gbq(query, project_id=PROJECT_ID, credentials=credentials)
+
+@st.cache_data(ttl=3600*24)
 def fetch_single_game_records(target, category, metric_sel, match_ids, valid_team_ids=None, skip_limit=False):
     if not match_ids: return pd.DataFrame()
     match_ids_str = ",".join(map(str, match_ids))
@@ -1118,5 +1136,351 @@ elif nav_page == "Sequências":
 
 elif nav_page == "Comparação":
     st.markdown('<h1 class="title-gradient">⚖️ Player & Club Comparison</h1>', unsafe_allow_html=True)
-    st.info("🚧 Em breve. Comparativo direto entre Atletas e Clubes com Radars e Evolução Numérica.")
+    
+    NEGATIVE_METRICS = [
+        "Dribles Sofridos", "Gols Contra", "Erro Capital (Gol)", "Erro Capital (Chute)", 
+        "Pênalti Cometido", "Duelos Perdidos", "Duelos Aéreos Perdidos", "Desarmado", 
+        "Perda de Posse", "Domínios Errados", "Faltas Cometidas", "Cartões Amarelos", 
+        "Cartões Vermelhos", "Impedimentos", "Grandes Chances Perdidas", "Chutes pra Fora"
+    ]
+
+    def format_cmp_val(val, metric_name, is_best, calc_mode):
+        if "%" in metric_name:
+            text = f"{val:.1f}%"
+        elif metric_name.startswith("xG") or metric_name.startswith("xA") or "Valor" in metric_name or metric_name == "Gols Evitados":
+            text = f"{val:.2f}"
+        else:
+            if calc_mode == "Total":
+                text = f"{val:.0f}"
+            else:
+                text = f"{val:.2f}"
+        
+        if is_best:
+            return f"<u style='text-decoration-color: #00d4ff;'><b style='color: #00d4ff;'>{text}</b></u>"
+        return text
+
+    def calculate_best(val_a, val_b, metric_name):
+        if val_a == val_b:
+            return False, False
+        if metric_name in NEGATIVE_METRICS:
+            return val_a < val_b, val_b < val_a
+        return val_a > val_b, val_b > val_a
+
+    def recalculate_percentages(row):
+        for total_col, cert_col, pct_col in PAIRS_PERCENTAGE:
+            if total_col in row and cert_col in row:
+                row[pct_col] = (row[cert_col] / row[total_col] * 100.0) if row[total_col] > 0 else 0.0
+                
+        if "Duelos Ganhos" in row and "Duelos Perdidos" in row:
+            tot = row["Duelos Ganhos"] + row["Duelos Perdidos"]
+            row["% Duelos Ganhos"] = (row["Duelos Ganhos"] / tot * 100.0) if tot > 0 else 0.0
+            
+        if "Duelos Aéreos Ganhos" in row and "Duelos Aéreos Perdidos" in row:
+            tot_ae = row["Duelos Aéreos Ganhos"] + row["Duelos Aéreos Perdidos"]
+            row["% Aéreos Ganhos"] = (row["Duelos Aéreos Ganhos"] / tot_ae * 100.0) if tot_ae > 0 else 0.0
+            
+        return row
+
+    if filtered_matches.empty:
+        st.info("Nenhuma partida encontrada para os filtros base de Competição/Data.")
+    else:
+        tab_1x1, tab_comsem = st.tabs(["1x1", "Com/Sem"])
+        
+        with tab_1x1:
+            col_type, col_cat, col_calc = st.columns(3)
+            with col_type:
+                comp_target = st.pills("Comparar:", ["Clube", "Jogador"], default="Jogador", key="c1x1_target")
+            with col_cat:
+                comp_cat = st.pills("Categoria:", list(CATEGORIES_UI_PT.keys()), default="Finalização", key="c1x1_cat")
+            with col_calc:
+                comp_calc = st.pills("Cálculo:", ["Total", "Média por Jogo", "Por 90 min"], default="Total", key="c1x1_calc")
+            
+            # Entity Selection Logic
+            if comp_target == "Clube":
+                context_club_merged = pd.merge(filtered_matches, df_tournaments, left_on=['tournament_id', 'season_id'], right_on=['unique_tournament_id', 'season_id'], how='left')
+                avail_clubs_p = sorted(df_clubs[df_clubs['team_id'].isin(clubs_in_matches)]['name'].tolist())
+                
+                col_A, col_B = st.columns(2)
+                with col_A:
+                    st.markdown("#### Lado A")
+                    ent_A_comp = st.multiselect("Competições 1", sorted(context_club_merged['name_y'].dropna().unique()), default=[], key="ca_comp_c")
+                    ent_A_temp = st.multiselect("Temporadas 1", sorted(context_club_merged['season_year'].dropna().unique()), default=[], key="ca_temp_c")
+                    ent_A = st.selectbox("Clube 1", avail_clubs_p, key="c1_ca")
+                with col_B:
+                    st.markdown("#### Lado B")
+                    ent_B_comp = st.multiselect("Competições 2", sorted(context_club_merged['name_y'].dropna().unique()), default=[], key="cb_comp_c")
+                    ent_B_temp = st.multiselect("Temporadas 2", sorted(context_club_merged['season_year'].dropna().unique()), default=[], key="cb_temp_c")
+                    ent_B = st.selectbox("Clube 2", avail_clubs_p, index=min(1, len(avail_clubs_p)-1) if len(avail_clubs_p) > 1 else 0, key="c1_cb")
+                
+                if ent_A and ent_B:
+                    id_A = df_clubs[df_clubs['name'] == ent_A]['team_id'].iloc[0]
+                    id_B = df_clubs[df_clubs['name'] == ent_B]['team_id'].iloc[0]
+                    
+                    df_comp_granular = fetch_club_category_stats(
+                        category=comp_cat,
+                        match_ids=match_ids_list,
+                        valid_team_ids=[id_A, id_B],
+                        group_mode="Por temporada e competição"
+                    )
+                    
+                    if not df_comp_granular.empty:
+                        # Local Pandas isolation A
+                        df_A = df_comp_granular[df_comp_granular['Clube'] == ent_A]
+                        if ent_A_comp: df_A = df_A[df_A['Competicao'].isin(ent_A_comp)]
+                        if ent_A_temp: df_A = df_A[df_A['Temporada'].isin(ent_A_temp)]
+                        
+                        row_a = pd.Series(dtype=float)
+                        if not df_A.empty:
+                            row_a = df_A.sum(numeric_only=True)
+                            row_a = recalculate_percentages(row_a)
+                            row_a_calc = apply_calc_mode(pd.DataFrame([row_a]), CATEGORIES_UI_PT[comp_cat], comp_calc).iloc[0]
+                            row_a_calc['Jogos'] = row_a['Jogos'] # Preserve raw games for display
+                            row_a_calc['Minutos'] = row_a['Minutos']
+                        else:
+                            row_a_calc = pd.Series(dtype=float)
+                            
+                        # Local Pandas isolation B
+                        df_B = df_comp_granular[df_comp_granular['Clube'] == ent_B]
+                        if ent_B_comp: df_B = df_B[df_B['Competicao'].isin(ent_B_comp)]
+                        if ent_B_temp: df_B = df_B[df_B['Temporada'].isin(ent_B_temp)]
+                        
+                        row_b = pd.Series(dtype=float)
+                        if not df_B.empty:
+                            row_b = df_B.sum(numeric_only=True)
+                            row_b = recalculate_percentages(row_b)
+                            row_b_calc = apply_calc_mode(pd.DataFrame([row_b]), CATEGORIES_UI_PT[comp_cat], comp_calc).iloc[0]
+                            row_b_calc['Jogos'] = row_b['Jogos']
+                            row_b_calc['Minutos'] = row_b['Minutos']
+                        else:
+                            row_b_calc = pd.Series(dtype=float)
+                        
+                        st.write("<br>", unsafe_allow_html=True)
+                        ha, hmid, hb = st.columns([3, 2, 3])
+                        with ha:
+                            st.markdown(f"<h3 style='text-align: center; color: #aaa;'>{ent_A}</h3>", unsafe_allow_html=True)
+                            if not row_a_calc.empty and row_a_calc['Jogos'] > 0: st.markdown(f"<p style='text-align: center; color: #777;'>{row_a_calc['Jogos']:.0f} Jogos</p>", unsafe_allow_html=True)
+                        with hmid:
+                            st.markdown(f"<h4 style='text-align: center; margin-top: 15px; color: #555;'>Métrica</h4>", unsafe_allow_html=True)
+                        with hb:
+                            st.markdown(f"<h3 style='text-align: center; color: #aaa;'>{ent_B}</h3>", unsafe_allow_html=True)
+                            if not row_b_calc.empty and row_b_calc['Jogos'] > 0: st.markdown(f"<p style='text-align: center; color: #777;'>{row_b_calc['Jogos']:.0f} Jogos</p>", unsafe_allow_html=True)
+                        st.divider()
+                        
+                        if row_a_calc.empty and row_b_calc.empty:
+                            st.warning("Nenhum dado encontrado para os filtros de temporais locais selecionados.")
+                        else:
+                            for metric in CATEGORIES_UI_PT[comp_cat]:
+                                v_a = row_a_calc.get(metric, 0) if not row_a_calc.empty else 0
+                                v_b = row_b_calc.get(metric, 0) if not row_b_calc.empty else 0
+                                if pd.isna(v_a): v_a = 0
+                                if pd.isna(v_b): v_b = 0
+                                
+                                b_a, b_b = calculate_best(v_a, v_b, metric)
+                                st.markdown(f"""
+                                <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 10%; border-bottom: 1px solid #222;">
+                                   <div style="flex:1; text-align:center; font-size: 1.3em;">{format_cmp_val(v_a, metric, b_a, comp_calc)}</div>
+                                   <div style="flex:1; text-align:center; font-weight:bold; color:#ddd; font-size: 1.1em;">{metric}</div>
+                                   <div style="flex:1; text-align:center; font-size: 1.3em;">{format_cmp_val(v_b, metric, b_b, comp_calc)}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                    else:
+                        st.warning("Estatísticas não encontradas para os times selecionados neste período.")
+
+            else:
+                context_details = get_dynamic_context_details(match_ids_list)
+                
+                col_A, col_B = st.columns(2)
+                with col_A:
+                    st.markdown("#### Lado A (Jogador 1)")
+                    A_comps_opts = sorted(context_details['comp_name'].dropna().unique().tolist()) if not context_details.empty else []
+                    ent_A_comp = st.multiselect("Competições 1", A_comps_opts, default=[], key="pa_comp_c")
+                    A_temp_opts = sorted(context_details['season_year'].dropna().unique().tolist()) if not context_details.empty else []
+                    ent_A_temp = st.multiselect("Temporadas 1", A_temp_opts, default=[], key="pa_temp_c")
+                    
+                    df_A_opts = context_details.copy()
+                    if ent_A_comp: df_A_opts = df_A_opts[df_A_opts['comp_name'].isin(ent_A_comp)]
+                    if ent_A_temp: df_A_opts = df_A_opts[df_A_opts['season_year'].isin(ent_A_temp)]
+                    if selected_team_ids: df_A_opts = df_A_opts[df_A_opts['team_id'].isin(selected_team_ids)]
+                    
+                    A_team_opts = sorted(df_A_opts['team_name'].dropna().unique().tolist()) if not df_A_opts.empty else []
+                    ent_A_team = st.selectbox("Clube 1", ["Todos"] + A_team_opts, key="c1_pta")
+                    if ent_A_team != "Todos": df_A_opts = df_A_opts[df_A_opts['team_name'] == ent_A_team]
+                    
+                    A_players_opts = sorted(df_A_opts['name'].unique().tolist()) if not df_A_opts.empty else []
+                    ent_A = st.selectbox("Jogador 1", A_players_opts, key="c1_pa")
+
+                with col_B:
+                    st.markdown("#### Lado B (Jogador 2)")
+                    B_comps_opts = sorted(context_details['comp_name'].dropna().unique().tolist()) if not context_details.empty else []
+                    ent_B_comp = st.multiselect("Competições 2", B_comps_opts, default=[], key="pb_comp_c")
+                    B_temp_opts = sorted(context_details['season_year'].dropna().unique().tolist()) if not context_details.empty else []
+                    ent_B_temp = st.multiselect("Temporadas 2", B_temp_opts, default=[], key="pb_temp_c")
+                    
+                    df_B_opts = context_details.copy()
+                    if ent_B_comp: df_B_opts = df_B_opts[df_B_opts['comp_name'].isin(ent_B_comp)]
+                    if ent_B_temp: df_B_opts = df_B_opts[df_B_opts['season_year'].isin(ent_B_temp)]
+                    if selected_team_ids: df_B_opts = df_B_opts[df_B_opts['team_id'].isin(selected_team_ids)]
+                    
+                    B_team_opts = sorted(df_B_opts['team_name'].dropna().unique().tolist()) if not df_B_opts.empty else []
+                    ent_B_team = st.selectbox("Clube 2", ["Todos"] + B_team_opts, key="c1_ptb")
+                    if ent_B_team != "Todos": df_B_opts = df_B_opts[df_B_opts['team_name'] == ent_B_team]
+                    
+                    B_players_opts = sorted(df_B_opts['name'].unique().tolist()) if not df_B_opts.empty else []
+                    ent_B = st.selectbox("Jogador 2", B_players_opts, index=min(1, len(B_players_opts)-1) if len(B_players_opts) > 1 else 0, key="c1_pb")
+                
+                if ent_A and ent_B:
+                    pid_A = df_A_opts[df_A_opts['name'] == ent_A]['player_id'].iloc[0]
+                    pid_B = df_B_opts[df_B_opts['name'] == ent_B]['player_id'].iloc[0]
+                    
+                    df_comp_granular = fetch_player_category_stats(
+                        category=comp_cat,
+                        match_ids=match_ids_list,
+                        valid_player_ids=[pid_A, pid_B],
+                        group_mode="Por temporada e competição"
+                    )
+                    
+                    if not df_comp_granular.empty:
+                        # Local Pandas isolation A
+                        df_A = df_comp_granular[df_comp_granular['PlayerID'] == pid_A]
+                        if ent_A_comp: df_A = df_A[df_A['Competicao'].isin(ent_A_comp)]
+                        if ent_A_temp: df_A = df_A[df_A['Temporada'].isin(ent_A_temp)]
+                        
+                        row_a = pd.Series(dtype=float)
+                        if not df_A.empty:
+                            row_a = df_A.sum(numeric_only=True)
+                            row_a = recalculate_percentages(row_a)
+                            row_a_calc = apply_calc_mode(pd.DataFrame([row_a]), CATEGORIES_UI_PT[comp_cat], comp_calc).iloc[0]
+                            row_a_calc['Jogos'] = row_a['Jogos']
+                            row_a_calc['Minutos'] = row_a['Minutos']
+                        else:
+                            row_a_calc = pd.Series(dtype=float)
+                            
+                        # Local Pandas isolation B
+                        df_B = df_comp_granular[df_comp_granular['PlayerID'] == pid_B]
+                        if ent_B_comp: df_B = df_B[df_B['Competicao'].isin(ent_B_comp)]
+                        if ent_B_temp: df_B = df_B[df_B['Temporada'].isin(ent_B_temp)]
+                        
+                        row_b = pd.Series(dtype=float)
+                        if not df_B.empty:
+                            row_b = df_B.sum(numeric_only=True)
+                            row_b = recalculate_percentages(row_b)
+                            row_b_calc = apply_calc_mode(pd.DataFrame([row_b]), CATEGORIES_UI_PT[comp_cat], comp_calc).iloc[0]
+                            row_b_calc['Jogos'] = row_b['Jogos']
+                            row_b_calc['Minutos'] = row_b['Minutos']
+                        else:
+                            row_b_calc = pd.Series(dtype=float)
+                        
+                        st.write("<br>", unsafe_allow_html=True)
+                        ha, hmid, hb = st.columns([3, 2, 3])
+                        with ha:
+                            st.markdown(f"<h3 style='text-align: center; color: #aaa;'>{ent_A}</h3>", unsafe_allow_html=True)
+                            if not row_a_calc.empty and row_a_calc['Jogos'] > 0: st.markdown(f"<p style='text-align: center; color: #777;'>{row_a_calc['Jogos']:.0f} Jogos | {row_a_calc['Minutos']:.0f} Mins</p>", unsafe_allow_html=True)
+                        with hmid:
+                            st.markdown(f"<h4 style='text-align: center; margin-top: 15px; color: #555;'>Métrica</h4>", unsafe_allow_html=True)
+                        with hb:
+                            st.markdown(f"<h3 style='text-align: center; color: #aaa;'>{ent_B}</h3>", unsafe_allow_html=True)
+                            if not row_b_calc.empty and row_b_calc['Jogos'] > 0: st.markdown(f"<p style='text-align: center; color: #777;'>{row_b_calc['Jogos']:.0f} Jogos | {row_b_calc['Minutos']:.0f} Mins</p>", unsafe_allow_html=True)
+                        st.divider()
+                        
+                        if row_a_calc.empty and row_b_calc.empty:
+                            st.warning("Nenhum dado encontrado para os filtros temporais locais selecionados.")
+                        else:
+                            for metric in CATEGORIES_UI_PT[comp_cat]:
+                                v_a = row_a_calc.get(metric, 0) if not row_a_calc.empty else 0
+                                v_b = row_b_calc.get(metric, 0) if not row_b_calc.empty else 0
+                                if pd.isna(v_a): v_a = 0
+                                if pd.isna(v_b): v_b = 0
+                                
+                                b_a, b_b = calculate_best(v_a, v_b, metric)
+                                st.markdown(f"""
+                                <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 10%; border-bottom: 1px solid #222;">
+                                   <div style="flex:1; text-align:center; font-size: 1.3em;">{format_cmp_val(v_a, metric, b_a, comp_calc)}</div>
+                                   <div style="flex:1; text-align:center; font-weight:bold; color:#ddd; font-size: 1.1em;">{metric}</div>
+                                   <div style="flex:1; text-align:center; font-size: 1.3em;">{format_cmp_val(v_b, metric, b_b, comp_calc)}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                    else:
+                        st.warning("Estatísticas não encontradas para os jogadores selecionados neste período.")
+                        
+        with tab_comsem:
+            col_cat_cs, col_calc_cs = st.columns(2)
+            with col_cat_cs:
+                cs_cat = st.pills("Categoria (Com/Sem):", list(CATEGORIES_UI_PT.keys()), default="Finalização", key="cs_cat")
+            with col_calc_cs:
+                cs_calc = st.pills("Cálculo (Com/Sem):", ["Total", "Média por Jogo", "Por 90 min"], default="Total", key="cs_calc")
+                
+            context_details_cs = get_dynamic_context_details(match_ids_list)
+            base_players_cs = context_details_cs.drop_duplicates(subset=['player_id']).copy() if not context_details_cs.empty else pd.DataFrame()
+            if selected_team_ids and not base_players_cs.empty:
+                base_players_cs = base_players_cs[base_players_cs['team_id'].isin(selected_team_ids)]
+            avail_players_cs = sorted(base_players_cs['name'].unique().tolist()) if not base_players_cs.empty else []
+            
+            cs_player = st.selectbox("Analisar impacto do jogador:", avail_players_cs, key="cs_p")
+            
+            if cs_player:
+                p_info = base_players_cs[base_players_cs['name'] == cs_player].iloc[0]
+                p_id = p_info['player_id']
+                p_team = p_info['team_id']
+                
+                team_matches_all = filtered_matches[(filtered_matches['home_team_id'] == p_team) | (filtered_matches['away_team_id'] == p_team)]['match_id'].tolist()
+                
+                if not team_matches_all:
+                    st.warning("O time deste jogador não possui partidas no período filtrado.")
+                else:
+                    tm_str = ",".join(map(str, team_matches_all))
+                    query_mins = f"SELECT match_id FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` WHERE player_id = {p_id} AND metric_key = 'minutesPlayed' AND CAST(value AS FLOAT64) > 0 AND match_id IN ({tm_str})"
+                    try:
+                        played_matches_df = pandas_gbq.read_gbq(query_mins, project_id=PROJECT_ID, credentials=credentials)
+                        played_matches = played_matches_df['match_id'].tolist()
+                    except:
+                        played_matches = []
+                        
+                    not_played_matches = list(set(team_matches_all) - set(played_matches))
+                    
+                    df_com = fetch_club_category_stats(
+                        category=cs_cat, match_ids=played_matches, valid_team_ids=[p_team], group_mode="Acumulado"
+                    ) if played_matches else pd.DataFrame()
+                    
+                    df_sem = fetch_club_category_stats(
+                        category=cs_cat, match_ids=not_played_matches, valid_team_ids=[p_team], group_mode="Acumulado"
+                    ) if not_played_matches else pd.DataFrame()
+                    
+                    df_calc_com = apply_calc_mode(df_com, CATEGORIES_UI_PT[cs_cat], cs_calc) if not df_com.empty else pd.DataFrame()
+                    df_calc_sem = apply_calc_mode(df_sem, CATEGORIES_UI_PT[cs_cat], cs_calc) if not df_sem.empty else pd.DataFrame()
+                    
+                    st.write("<br>", unsafe_allow_html=True)
+                    ha, hmid, hb = st.columns([3, 2, 3])
+                    with ha:
+                        st.markdown(f"<h3 style='text-align: center; color: #4CAF50;'>Com {cs_player}</h3>", unsafe_allow_html=True)
+                        if not df_calc_com.empty:
+                            st.markdown(f"<p style='text-align: center; color: #777;'>{df_calc_com['Jogos'].iloc[0]:.0f} Jogos</p>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<p style='text-align: center; color: #777;'>0 Jogos</p>", unsafe_allow_html=True)
+                    with hmid:
+                        st.markdown(f"<h4 style='text-align: center; margin-top: 15px; color: #555;'>Estatística do Time</h4>", unsafe_allow_html=True)
+                    with hb:
+                        st.markdown(f"<h3 style='text-align: center; color: #f44336;'>Sem {cs_player}</h3>", unsafe_allow_html=True)
+                        if not df_calc_sem.empty:
+                            st.markdown(f"<p style='text-align: center; color: #777;'>{df_calc_sem['Jogos'].iloc[0]:.0f} Jogos</p>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<p style='text-align: center; color: #777;'>0 Jogos</p>", unsafe_allow_html=True)
+                    st.divider()
+                    
+                    if df_com.empty and df_sem.empty:
+                        st.info("Estatísticas não disponíveis para cálculo.")
+                    else:
+                        for metric in CATEGORIES_UI_PT[cs_cat]:
+                            if (not df_calc_com.empty and metric in df_calc_com.columns) or (not df_calc_sem.empty and metric in df_calc_sem.columns):
+                                v_com = df_calc_com[metric].iloc[0] if not df_calc_com.empty and metric in df_calc_com.columns else 0
+                                v_sem = df_calc_sem[metric].iloc[0] if not df_calc_sem.empty and metric in df_calc_sem.columns else 0
+                                
+                                b_com, b_sem = calculate_best(v_com, v_sem, metric)
+                                
+                                st.markdown(f"""
+                                <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 10%; border-bottom: 1px solid #222;">
+                                   <div style="flex:1; text-align:center; font-size: 1.3em;">{format_cmp_val(v_com, metric, b_com, cs_calc)}</div>
+                                   <div style="flex:1; text-align:center; font-weight:bold; color:#ddd; font-size: 1.1em;">{metric}</div>
+                                   <div style="flex:1; text-align:center; font-size: 1.3em;">{format_cmp_val(v_sem, metric, b_sem, cs_calc)}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
 
