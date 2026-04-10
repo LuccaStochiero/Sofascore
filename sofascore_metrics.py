@@ -53,7 +53,7 @@ METRICS_CONFIG = {
     "Bloqueios": {"key": "outfielderBlock", "source": "player", "category": "Defesa"},
     "Bolas Recuperadas": {"key": "ballRecovery", "source": "player", "category": "Defesa"},
     "Dribles Sofridos": {"key": "challengeLost", "source": "player", "category": "Defesa"},
-    "Gols Evitados": {"key": "goalsPrevented", "source": "player", "category": "Defesa"},
+    "Gols Evitados": {"key": "goalsPrevented", "source": "player", "category": "Goleiro"},
     "Sem Sofrer Gols": {"key": "cleanSheet", "source": "match", "category": "Defesa"},
     "Gols Contra": {"key": "ownGoals", "source": "player", "category": "Defesa"},
     "Erro Capital (Gol)": {"key": "errorLeadToAGoal", "source": "player", "category": "Defesa"},
