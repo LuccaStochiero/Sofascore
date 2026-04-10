@@ -125,7 +125,7 @@ def load_base_data():
     return df_tournaments, df_matches, df_clubs, df_players
 
 @st.cache_data(ttl=3600*24)
-def fetch_player_category_stats(category, match_ids, valid_team_ids=None, valid_player_ids=None, valid_positions=None, group_mode="Não agrupar nada"):
+def fetch_player_category_stats(category, match_ids, valid_team_ids=None, valid_player_ids=None, valid_positions=None, group_mode="Acumulado"):
     if not match_ids: return pd.DataFrame()
     match_ids_str = ",".join(map(str, match_ids))
 
@@ -169,26 +169,26 @@ def fetch_player_category_stats(category, match_ids, valid_team_ids=None, valid_
     join_cte_matches = "pm.player_id = pmx.player_id"
     pivot_index = ['Jogador', 'Clube', 'Pos', 'Jogos', 'Minutos']
 
-    if group_mode != "Não agrupar nada":
+    if group_mode != "Acumulado":
         join_matches_cte = f"""
         JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON psl.match_id = m.match_id
         LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id
         """
-        if group_mode == "Agrupar Temporadas e Competições":
+        if group_mode == "Por temporada e competição":
             select_m_cte = "t.name as comp_name, t.season_year as sea_year,"
             group_m_cte = ", t.name, t.season_year"
             select_m_final = "pmx.comp_name as Competicao, pmx.sea_year as Temporada,"
             group_m_final = ", Competicao, Temporada"
             join_cte_matches += " AND pm.comp_name = pmx.comp_name AND pm.sea_year = pmx.sea_year"
             pivot_index = ['Jogador', 'Clube', 'Pos', 'Competicao', 'Temporada', 'Jogos', 'Minutos']
-        elif group_mode == "Agrupar apenas Temporadas":
+        elif group_mode == "Por temporada":
             select_m_cte = "t.season_year as sea_year,"
             group_m_cte = ", t.season_year"
             select_m_final = "pmx.sea_year as Temporada,"
             group_m_final = ", Temporada"
             join_cte_matches += " AND pm.sea_year = pmx.sea_year"
             pivot_index = ['Jogador', 'Clube', 'Pos', 'Temporada', 'Jogos', 'Minutos']
-        elif group_mode == "Agrupar apenas Competições":
+        elif group_mode == "Por competição":
             select_m_cte = "t.name as comp_name,"
             group_m_cte = ", t.name"
             select_m_final = "pmx.comp_name as Competicao,"
@@ -263,7 +263,7 @@ def fetch_player_category_stats(category, match_ids, valid_team_ids=None, valid_
     return df_pivot
 
 @st.cache_data(ttl=3600*24)
-def fetch_club_category_stats(category, match_ids, valid_team_ids=None, group_mode="Não agrupar nada", perspective="A favor"):
+def fetch_club_category_stats(category, match_ids, valid_team_ids=None, group_mode="Acumulado", perspective="A favor"):
     if not match_ids: return pd.DataFrame()
     match_ids_str = ",".join(map(str, match_ids))
 
@@ -296,23 +296,23 @@ def fetch_club_category_stats(category, match_ids, valid_team_ids=None, group_mo
     pivot_index = ['Clube', 'Jogos', 'Minutos']
     join_tournaments_str = ""
 
-    if group_mode != "Não agrupar nada":
+    if group_mode != "Acumulado":
         join_tournaments_str = f"LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id"
-        if group_mode == "Agrupar Temporadas e Competições":
+        if group_mode == "Por temporada e competição":
             select_m_cte = "t.name as comp_name, t.season_year as sea_year,"
             group_m_cte = ", t.name, t.season_year"
             select_m_final = "cmx.comp_name as Competicao, cmx.sea_year as Temporada,"
             group_m_final = ", Competicao, Temporada"
             join_cte_matches += " AND pm.comp_name = cmx.comp_name AND pm.sea_year = cmx.sea_year"
             pivot_index = ['Clube', 'Competicao', 'Temporada', 'Jogos', 'Minutos']
-        elif group_mode == "Agrupar apenas Temporadas":
+        elif group_mode == "Por temporada":
             select_m_cte = "t.season_year as sea_year,"
             group_m_cte = ", t.season_year"
             select_m_final = "cmx.sea_year as Temporada,"
             group_m_final = ", Temporada"
             join_cte_matches += " AND pm.sea_year = cmx.sea_year"
             pivot_index = ['Clube', 'Temporada', 'Jogos', 'Minutos']
-        elif group_mode == "Agrupar apenas Competições":
+        elif group_mode == "Por competição":
             select_m_cte = "t.name as comp_name,"
             group_m_cte = ", t.name"
             select_m_final = "cmx.comp_name as Competicao,"
@@ -865,11 +865,11 @@ if nav_page == "Ranking":
     with col_c1:
         calc_mode = st.selectbox("Visualização das Variáveis:", ["Total", "Média por Jogo", "Por 90 min"])
     with col_c2:
-        group_mode = st.selectbox("Agrupar por:", [
-            "Não agrupar nada", 
-            "Agrupar Temporadas e Competições", 
-            "Agrupar apenas Temporadas", 
-            "Agrupar apenas Competições"
+        group_mode = st.selectbox("Agrupamento:", [
+            "Acumulado", 
+            "Por temporada e competição", 
+            "Por temporada", 
+            "Por competição"
         ])
     with col_c3:
         sub_c1, sub_c2 = st.columns(2)
