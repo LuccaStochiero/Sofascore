@@ -591,7 +591,12 @@ def apply_calc_mode(df_pivot, pt_metrics, calc_mode):
     if df_pivot.empty: return df_pivot
     
     df_res = df_pivot.copy()
-    cols_to_transform = [c for c in pt_metrics if c in df_res.columns]
+    
+    # Colunas de % nunca devem ser afetadas pela mudança de modo
+    pct_cols_protected = {pct_col for _, _, pct_col in PAIRS_PERCENTAGE}
+    pct_cols_protected |= {"% Duelos Ganhos", "% Aéreos Ganhos"}
+    
+    cols_to_transform = [c for c in pt_metrics if c in df_res.columns and c not in pct_cols_protected]
     
     if calc_mode == "Total":
         return df_res
