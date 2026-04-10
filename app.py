@@ -216,11 +216,19 @@ def fetch_player_category_stats(category, match_ids, valid_team_ids=None, valid_
         {join_matches_cte}
         WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key IN ({keys_str}) {where_clause}
         GROUP BY psl.player_id, psl.metric_key {group_m_cte}
+    ),
+    PlayerClubs AS (
+        SELECT psl.player_id,
+               STRING_AGG(DISTINCT COALESCE(c.name, 'Desconhecido') ORDER BY c.name) as Clube
+        FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
+        LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.clubs` c ON c.team_id = psl.team_id
+        WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key = 'minutesPlayed' {where_clause}
+        GROUP BY psl.player_id
     )
     SELECT 
         p.name as Jogador,
         pmx.player_id as PlayerID,
-        COALESCE(c.name, 'Desconhecido') as Clube,
+        COALESCE(pc.Clube, 'Desconhecido') as Clube,
         MAX(p.position) as Pos,
         {select_m_final}
         pm.Jogos,
@@ -229,8 +237,8 @@ def fetch_player_category_stats(category, match_ids, valid_team_ids=None, valid_
         pmx.Valor_Total
     FROM PlayerMetrics pmx
     JOIN PlayerMatches pm ON {join_cte_matches}
+    LEFT JOIN PlayerClubs pc ON pc.player_id = pmx.player_id
     JOIN `{PROJECT_ID}.{DATASET_ID}.players` p ON p.player_id = pmx.player_id
-    LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.clubs` c ON c.team_id = pmx.team_id
     {final_where_clause}
     GROUP BY p.name, pmx.player_id, Clube, pm.Jogos, pm.Minutos, pmx.metric_key, pmx.Valor_Total {group_m_final}
     """
