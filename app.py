@@ -219,7 +219,7 @@ def fetch_player_category_stats(category, match_ids, valid_team_ids=None, valid_
     ),
     PlayerClubs AS (
         SELECT psl.player_id,
-               STRING_AGG(DISTINCT COALESCE(c.name, 'Desconhecido') ORDER BY c.name) as Clube
+               STRING_AGG(DISTINCT COALESCE(c.name, 'Desconhecido')) as Clube
         FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
         LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.clubs` c ON c.team_id = psl.team_id
         WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key = 'minutesPlayed'
