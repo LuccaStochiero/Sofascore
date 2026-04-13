@@ -619,6 +619,7 @@ def fetch_single_game_records(target, category, metric_sel, match_ids, valid_tea
             t.season_year as Temporada,
             CONCAT(m.home_team_name, ' vs ', m.away_team_name) as Jogo,
             m.match_date as Data,
+            cmx.match_id as MatchID,
             cmx.metric_key,
             cmx.Valor_Total
         FROM ClubMetrics cmx
