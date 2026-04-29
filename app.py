@@ -513,7 +513,7 @@ def get_dynamic_context_details(match_ids):
     return pandas_gbq.read_gbq(query, project_id=PROJECT_ID, credentials=credentials)
 
 @st.cache_data(ttl=3600*24)
-def fetch_single_game_records(target, category, metric_sel, match_ids, valid_team_ids=None, skip_limit=False):
+def fetch_single_game_records(target, category, metric_sel, match_ids, valid_team_ids=None, skip_limit=False, home_away='Ambos', order='Maior'):
     if not match_ids: return pd.DataFrame()
     match_ids_str = ",".join(map(str, match_ids))
 
@@ -543,6 +543,12 @@ def fetch_single_game_records(target, category, metric_sel, match_ids, valid_tea
     m_keys_str = ",".join([f"'{k}'" for k in match_keys]) if match_keys else ""
     team_ids_str = ",".join(map(str, valid_team_ids)) if valid_team_ids else ""
     
+    ha_condition = ""
+    if home_away == 'Mandante':
+        ha_condition = "AND psl.team_id = m_ha.home_team_id"
+    elif home_away == 'Visitante':
+        ha_condition = "AND psl.team_id = m_ha.away_team_id"
+
     ctes = []
 
     if target == "Jogador":
@@ -553,7 +559,9 @@ def fetch_single_game_records(target, category, metric_sel, match_ids, valid_tea
             SELECT psl.player_id, psl.match_id, psl.team_id,
                    psl.metric_key, SUM(CAST(psl.value AS FLOAT64)) as Valor_Total
             FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
+            JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m_ha ON m_ha.match_id = psl.match_id
             WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key IN ({p_keys_str})
+            {ha_condition}
             {("AND psl.team_id IN (" + team_ids_str + ")") if valid_team_ids else ""}
             GROUP BY psl.player_id, psl.match_id, psl.team_id, psl.metric_key
         )
@@ -583,7 +591,9 @@ def fetch_single_game_records(target, category, metric_sel, match_ids, valid_tea
                 SELECT psl.team_id, psl.match_id,
                        psl.metric_key, SUM(CAST(psl.value AS FLOAT64)) as Valor_Total
                 FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
+                JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m_ha ON m_ha.match_id = psl.match_id
                 WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key IN ({p_keys_str})
+                {ha_condition}
                 {("AND psl.team_id IN (" + team_ids_str + ")") if valid_team_ids else ""}
                 GROUP BY psl.team_id, psl.match_id, psl.metric_key
             )
@@ -599,6 +609,7 @@ def fetch_single_game_records(target, category, metric_sel, match_ids, valid_tea
                 JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON msl.match_id = m.match_id
                 CROSS JOIN UNNEST([m.home_team_id, m.away_team_id]) as team_id
                 WHERE msl.match_id IN ({match_ids_str}) AND msl.metric_key IN ({m_keys_str}) AND msl.period = 'ALL'
+                {ha_condition.replace("psl.team_id", "team_id").replace("m_ha", "m")}
                 {("AND team_id IN (" + team_ids_str + ")") if valid_team_ids else ""}
                 GROUP BY team_id, msl.match_id, msl.metric_key
             )
@@ -661,7 +672,8 @@ def fetch_single_game_records(target, category, metric_sel, match_ids, valid_tea
         
     if metric_sel in df_pivot.columns:
         if not skip_limit:
-            df_pivot = df_pivot.sort_values(by=metric_sel, ascending=False).head(100)
+            is_ascending = True if order == 'Menor' else False
+            df_pivot = df_pivot.sort_values(by=metric_sel, ascending=is_ascending).head(100)
     
     return df_pivot
     
@@ -786,6 +798,10 @@ df_tournaments, df_matches, df_clubs, df_players = load_base_data()
 st.sidebar.markdown(f'<h1 style="color:#00d4ff; text-align:center;">Sofascore Board</h1>', unsafe_allow_html=True)
 nav_page = st.sidebar.radio("Navegação", ["Ranking", "Sequências", "Comparação"])
 st.sidebar.divider()
+
+if st.sidebar.button("🔄 Atualizar Dados e Limpar Cache", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
 
 # --- Sidebar: Filter Engine ---
 st.sidebar.title("🔍 Configuração de Análise")
@@ -1099,11 +1115,13 @@ if nav_page == "Ranking":
         else:
             st.info("Nenhuma partida encontrada no período/rodada base.")        
     with tab_r:
-        rr_c1, rr_c2, rr_c3, rr_c4 = st.columns([1, 1, 2.5, 1.2])
+        rr_c1, rr_c2, rr_corder, rr_c3, rr_c4 = st.columns([1, 1, 1, 2.5, 1.2])
         with rr_c1:
             record_target = st.pills("Recorde de:", ["Clube", "Jogador"], default="Jogador", key="rec_type")
         with rr_c2:
             venue_r = st.pills("Mando:", ["Ambos", "Mandante", "Visitante"], default="Ambos", key="venue_r")
+        with rr_corder:
+            rec_order = st.pills("Ordem:", ["Maior", "Menor"], default="Maior", key="rec_order")
         with rr_c3:
             rec_cat = st.pills("Categoria:", list(CATEGORIES_UI_PT.keys()), default="Finalização", key="rec_cat")
         with rr_c4:
@@ -1128,7 +1146,9 @@ if nav_page == "Ranking":
                     category=rec_cat,
                     metric_sel=metric_sel,
                     match_ids=mi_r,
-                    valid_team_ids=p_id_list
+                    valid_team_ids=p_id_list,
+                    home_away=venue_r,
+                    order=rec_order
                 )
                 
                 if not df_records.empty and metric_sel in df_records.columns:
@@ -1190,7 +1210,8 @@ elif nav_page == "Sequências":
                         metric_sel=metric_sel,
                         match_ids=match_ids_list,
                         valid_team_ids=p_id_list,
-                        skip_limit=True
+                        skip_limit=True,
+                        home_away='Ambos'
                     )
                     
                     df_streaks = process_streaks_and_forms(
