@@ -513,7 +513,7 @@ def get_dynamic_context_details(match_ids):
     return pandas_gbq.read_gbq(query, project_id=PROJECT_ID, credentials=credentials)
 
 @st.cache_data(ttl=3600*24)
-def fetch_single_game_records(target, category, metric_sel, match_ids, valid_team_ids=None, skip_limit=False, home_away='Ambos', order='Maior'):
+def fetch_single_game_records(target, category, metric_sel, match_ids, valid_team_ids=None, skip_limit=False, home_away='Ambos', order='Maior', perspective='A favor'):
     if not match_ids: return pd.DataFrame()
     match_ids_str = ",".join(map(str, match_ids))
 
@@ -586,25 +586,42 @@ def fetch_single_game_records(target, category, metric_sel, match_ids, valid_tea
         
     else: # Clube
         if player_keys:
-            ctes.append(f"""
-            ClubPlayerStats AS (
-                SELECT psl.team_id, psl.match_id,
-                       psl.metric_key, SUM(CAST(psl.value AS FLOAT64)) as Valor_Total
-                FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
-                JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m_ha ON m_ha.match_id = psl.match_id
-                WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key IN ({p_keys_str})
-                {ha_condition}
-                {("AND psl.team_id IN (" + team_ids_str + ")") if valid_team_ids else ""}
-                GROUP BY psl.team_id, psl.match_id, psl.metric_key
-            )
-            """)
+            if perspective == "Sofrido":
+                ctes.append(f"""
+                ClubPlayerStats AS (
+                    SELECT target_team_id as team_id, psl.match_id,
+                           psl.metric_key, SUM(CAST(psl.value AS FLOAT64)) as Valor_Total
+                    FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
+                    JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m_ha ON m_ha.match_id = psl.match_id
+                    CROSS JOIN UNNEST([m_ha.home_team_id, m_ha.away_team_id]) as target_team_id
+                    WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key IN ({p_keys_str})
+                    AND target_team_id != psl.team_id
+                    {ha_condition.replace("psl.team_id", "target_team_id")}
+                    {("AND target_team_id IN (" + team_ids_str + ")") if valid_team_ids else ""}
+                    GROUP BY target_team_id, psl.match_id, psl.metric_key
+                )
+                """)
+            else:
+                ctes.append(f"""
+                ClubPlayerStats AS (
+                    SELECT psl.team_id, psl.match_id,
+                           psl.metric_key, SUM(CAST(psl.value AS FLOAT64)) as Valor_Total
+                    FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
+                    JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m_ha ON m_ha.match_id = psl.match_id
+                    WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key IN ({p_keys_str})
+                    {ha_condition}
+                    {("AND psl.team_id IN (" + team_ids_str + ")") if valid_team_ids else ""}
+                    GROUP BY psl.team_id, psl.match_id, psl.metric_key
+                )
+                """)
 
         if match_keys:
+            val_expr = "IF(m.home_team_id = team_id, msl.away_value, msl.home_value)" if perspective == "Sofrido" else "IF(m.home_team_id = team_id, msl.home_value, msl.away_value)"
             ctes.append(f"""
             ClubMatchStats AS (
                 SELECT team_id, msl.match_id,
                        msl.metric_key, 
-                       SUM(CAST(IF(m.home_team_id = team_id, msl.home_value, msl.away_value) AS FLOAT64)) as Valor_Total
+                       SUM(CAST({val_expr} AS FLOAT64)) as Valor_Total
                 FROM `{PROJECT_ID}.{DATASET_ID}.match_stats_log` msl
                 JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON msl.match_id = m.match_id
                 CROSS JOIN UNNEST([m.home_team_id, m.away_team_id]) as team_id
@@ -1115,13 +1132,18 @@ if nav_page == "Ranking":
         else:
             st.info("Nenhuma partida encontrada no período/rodada base.")        
     with tab_r:
-        rr_c1, rr_c2, rr_corder, rr_c3, rr_c4 = st.columns([1, 1, 1, 2.5, 1.2])
+        rr_c1, rr_c2, rr_corder, rr_cpersp, rr_c3, rr_c4 = st.columns([1, 1, 1, 1.2, 2.5, 1.2])
         with rr_c1:
             record_target = st.pills("Recorde de:", ["Clube", "Jogador"], default="Jogador", key="rec_type")
         with rr_c2:
             venue_r = st.pills("Mando:", ["Ambos", "Mandante", "Visitante"], default="Ambos", key="venue_r")
         with rr_corder:
             rec_order = st.pills("Ordem:", ["Maior", "Menor"], default="Maior", key="rec_order")
+        with rr_cpersp:
+            if record_target == "Clube":
+                rec_persp = st.pills("Perspectiva:", ["A favor", "Sofrido"], default="A favor", key="rec_persp")
+            else:
+                rec_persp = "A favor"
         with rr_c3:
             rec_cat = st.pills("Categoria:", list(CATEGORIES_UI_PT.keys()), default="Finalização", key="rec_cat")
         with rr_c4:
@@ -1148,7 +1170,8 @@ if nav_page == "Ranking":
                     match_ids=mi_r,
                     valid_team_ids=p_id_list,
                     home_away=venue_r,
-                    order=rec_order
+                    order=rec_order,
+                    perspective=rec_persp
                 )
                 
                 if not df_records.empty and metric_sel in df_records.columns:
