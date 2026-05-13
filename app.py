@@ -694,6 +694,189 @@ def fetch_single_game_records(target, category, metric_sel, match_ids, valid_tea
     
     return df_pivot
     
+@st.cache_data(ttl=3600*24)
+def fetch_last_games(target, category, match_ids, valid_team_ids=None, home_away='Ambos', perspective='A favor', n_games=10):
+    """Fetch the last N games per entity, with all metrics in the category, sorted by date DESC."""
+    if not match_ids: return pd.DataFrame()
+    match_ids_str = ",".join(map(str, match_ids))
+
+    pt_metrics = CATEGORIES_UI_PT.get(category, [])
+    player_keys = []
+    match_keys = []
+    key_to_pt = {}
+
+    get_info_fn = get_metric_info if target == "Jogador" else get_club_metric_info
+    for pt in pt_metrics:
+        mkey, source = get_info_fn(pt)
+        if mkey:
+            if source == 'player':
+                player_keys.append(mkey)
+            elif source == 'match':
+                match_keys.append(mkey)
+            key_to_pt[mkey] = pt
+
+    if not player_keys and not match_keys:
+        return pd.DataFrame()
+
+    if target == "Jogador":
+        if 'minutesPlayed' not in player_keys:
+            player_keys.append('minutesPlayed')
+            key_to_pt['minutesPlayed'] = 'Minutos Jogados'
+
+    p_keys_str = ",".join([f"'{k}'" for k in player_keys]) if player_keys else ""
+    m_keys_str = ",".join([f"'{k}'" for k in match_keys]) if match_keys else ""
+    team_ids_str = ",".join(map(str, valid_team_ids)) if valid_team_ids else ""
+
+    ha_condition = ""
+    if home_away == 'Mandante':
+        ha_condition = "AND psl.team_id = m_ha.home_team_id"
+    elif home_away == 'Visitante':
+        ha_condition = "AND psl.team_id = m_ha.away_team_id"
+
+    if target == "Jogador":
+        if not player_keys: return pd.DataFrame()
+        query = f"""
+        WITH PlayerMatches AS (
+            SELECT psl.player_id, psl.match_id, psl.team_id,
+                   psl.metric_key, SUM(CAST(psl.value AS FLOAT64)) as Valor_Total
+            FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
+            JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m_ha ON m_ha.match_id = psl.match_id
+            WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key IN ({p_keys_str})
+            {ha_condition}
+            {("AND psl.team_id IN (" + team_ids_str + ")") if valid_team_ids else ""}
+            GROUP BY psl.player_id, psl.match_id, psl.team_id, psl.metric_key
+        )
+        SELECT DISTINCT
+            p.name as Jogador,
+            pm.player_id as PlayerID,
+            COALESCE(c.name, 'Desconhecido') as Clube,
+            t.name as Competicao,
+            t.season_year as Temporada,
+            CONCAT(m.home_team_name, ' vs ', m.away_team_name) as Jogo,
+            m.match_date as Data,
+            pm.match_id as MatchID,
+            pm.metric_key,
+            pm.Valor_Total
+        FROM PlayerMatches pm
+        JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON pm.match_id = m.match_id
+        JOIN `{PROJECT_ID}.{DATASET_ID}.players` p ON p.player_id = pm.player_id AND p.team_id = pm.team_id
+        LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.clubs` c ON c.team_id = pm.team_id
+        LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id
+        """
+        pivot_index = ['Jogador', 'PlayerID', 'Clube', 'Competicao', 'Temporada', 'Jogo', 'Data', 'MatchID']
+        entity_col = 'PlayerID'
+
+    else:  # Clube
+        ctes = []
+        if player_keys:
+            if perspective == "Sofrido":
+                ctes.append(f"""
+                ClubPlayerStats AS (
+                    SELECT target_team_id as team_id, psl.match_id,
+                           psl.metric_key, SUM(CAST(psl.value AS FLOAT64)) as Valor_Total
+                    FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
+                    JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m_ha ON m_ha.match_id = psl.match_id
+                    CROSS JOIN UNNEST([m_ha.home_team_id, m_ha.away_team_id]) as target_team_id
+                    WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key IN ({p_keys_str})
+                    AND target_team_id != psl.team_id
+                    {ha_condition.replace("psl.team_id", "target_team_id")}
+                    {("AND target_team_id IN (" + team_ids_str + ")") if valid_team_ids else ""}
+                    GROUP BY target_team_id, psl.match_id, psl.metric_key
+                )
+                """)
+            else:
+                ctes.append(f"""
+                ClubPlayerStats AS (
+                    SELECT psl.team_id, psl.match_id,
+                           psl.metric_key, SUM(CAST(psl.value AS FLOAT64)) as Valor_Total
+                    FROM `{PROJECT_ID}.{DATASET_ID}.player_stats_log` psl
+                    JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m_ha ON m_ha.match_id = psl.match_id
+                    WHERE psl.match_id IN ({match_ids_str}) AND psl.metric_key IN ({p_keys_str})
+                    {ha_condition}
+                    {("AND psl.team_id IN (" + team_ids_str + ")") if valid_team_ids else ""}
+                    GROUP BY psl.team_id, psl.match_id, psl.metric_key
+                )
+                """)
+        if match_keys:
+            val_expr = "IF(m.home_team_id = team_id, msl.away_value, msl.home_value)" if perspective == "Sofrido" else "IF(m.home_team_id = team_id, msl.home_value, msl.away_value)"
+            ctes.append(f"""
+            ClubMatchStats AS (
+                SELECT team_id, msl.match_id,
+                       msl.metric_key,
+                       SUM(CAST({val_expr} AS FLOAT64)) as Valor_Total
+                FROM `{PROJECT_ID}.{DATASET_ID}.match_stats_log` msl
+                JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON msl.match_id = m.match_id
+                CROSS JOIN UNNEST([m.home_team_id, m.away_team_id]) as team_id
+                WHERE msl.match_id IN ({match_ids_str}) AND msl.metric_key IN ({m_keys_str}) AND msl.period = 'ALL'
+                {ha_condition.replace("psl.team_id", "team_id").replace("m_ha", "m")}
+                {("AND team_id IN (" + team_ids_str + ")") if valid_team_ids else ""}
+                GROUP BY team_id, msl.match_id, msl.metric_key
+            )
+            """)
+
+        union_parts = []
+        if player_keys: union_parts.append("SELECT * FROM ClubPlayerStats")
+        if match_keys:  union_parts.append("SELECT * FROM ClubMatchStats")
+        if not union_parts: return pd.DataFrame()
+
+        query = "WITH " + ", ".join(ctes) + f"""
+        , ClubMetrics AS ({" UNION ALL ".join(union_parts)})
+        SELECT DISTINCT
+            COALESCE(c.name, 'Desconhecido') as Clube,
+            t.name as Competicao,
+            t.season_year as Temporada,
+            CONCAT(m.home_team_name, ' vs ', m.away_team_name) as Jogo,
+            m.match_date as Data,
+            cmx.match_id as MatchID,
+            cmx.metric_key,
+            cmx.Valor_Total
+        FROM ClubMetrics cmx
+        JOIN `{PROJECT_ID}.{DATASET_ID}.matches` m ON m.match_id = cmx.match_id
+        LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.clubs` c ON c.team_id = cmx.team_id
+        LEFT JOIN `{PROJECT_ID}.{DATASET_ID}.tournaments` t ON m.tournament_id = t.unique_tournament_id AND m.season_id = t.season_id
+        """
+        pivot_index = ['Clube', 'Competicao', 'Temporada', 'Jogo', 'Data', 'MatchID']
+        entity_col = 'Clube'
+
+    df_raw = pandas_gbq.read_gbq(query, project_id=PROJECT_ID, credentials=credentials)
+    if df_raw.empty: return df_raw
+
+    _num_date = pd.to_numeric(df_raw['Data'], errors='coerce')
+    if _num_date.notna().mean() > 0.5:
+        df_raw['Data'] = pd.to_datetime(_num_date, unit='s', errors='coerce')
+    else:
+        df_raw['Data'] = pd.to_datetime(df_raw['Data'], errors='coerce')
+
+    df_raw['metric_pt'] = df_raw['metric_key'].map(key_to_pt)
+    df_raw = df_raw[df_raw['metric_pt'].notna()]
+
+    df_pivot = df_raw.pivot_table(index=pivot_index,
+                                  columns='metric_pt',
+                                  values='Valor_Total',
+                                  aggfunc='sum').reset_index()
+    df_pivot = df_pivot.fillna(0)
+
+    for total_col, cert_col, pct_col in PAIRS_PERCENTAGE:
+        if total_col in df_pivot.columns and cert_col in df_pivot.columns:
+            df_pivot[pct_col] = np.where(df_pivot[total_col] > 0, (df_pivot[cert_col] / df_pivot[total_col]) * 100.0, 0)
+    if "Duelos Ganhos" in df_pivot.columns and "Duelos Perdidos" in df_pivot.columns:
+        tot = df_pivot["Duelos Ganhos"] + df_pivot["Duelos Perdidos"]
+        df_pivot["% Duelos Ganhos"] = np.where(tot > 0, (df_pivot["Duelos Ganhos"] / tot) * 100.0, 0)
+    if "Duelos Aéreos Ganhos" in df_pivot.columns and "Duelos Aéreos Perdidos" in df_pivot.columns:
+        tot_ae = df_pivot["Duelos Aéreos Ganhos"] + df_pivot["Duelos Aéreos Perdidos"]
+        df_pivot["% Aéreos Ganhos"] = np.where(tot_ae > 0, (df_pivot["Duelos Aéreos Ganhos"] / tot_ae) * 100.0, 0)
+
+    # Sort by date DESC and keep last N games per entity
+    df_pivot = df_pivot.sort_values(by='Data', ascending=False)
+    if n_games > 0 and entity_col in df_pivot.columns:
+        df_pivot = df_pivot.groupby(entity_col, group_keys=False).head(n_games)
+        df_pivot = df_pivot.sort_values(by='Data', ascending=False)
+
+    # Format date as string after sorting
+    df_pivot['Data'] = df_pivot['Data'].dt.strftime('%d/%m/%Y')
+
+    return df_pivot
+
 def apply_calc_mode(df_pivot, pt_metrics, calc_mode):
     if df_pivot.empty: return df_pivot
     
@@ -996,7 +1179,7 @@ if nav_page == "Ranking":
         
     st.divider()
     
-    tab_j, tab_c, tab_r = st.tabs(["🏃 Jogadores", "🛡️ Clubes", "🔥 Recordes em Jogo Único"])
+    tab_j, tab_c, tab_r, tab_uj = st.tabs(["🏃 Jogadores", "🛡️ Clubes", "🔥 Recordes em Jogo Único", "📅 Últimos Jogos"])
     
     with tab_j:
         rj_c1, rj_c2 = st.columns([3, 1])
@@ -1199,6 +1382,78 @@ if nav_page == "Ranking":
                     st.info(f"Nenhum dado encontrado para a métrica {metric_sel}.")
             else:
                 st.info("Nenhuma partida encontrada no período/rodada base.")
+
+    with tab_uj:
+        uj_c1, uj_c2, uj_cpersp, uj_c3, uj_c4 = st.columns([1, 1, 1.2, 2.5, 1])
+        with uj_c1:
+            uj_target = st.pills("Visualizar:", ["Clube", "Jogador"], default="Jogador", key="uj_target")
+        with uj_c2:
+            uj_venue = st.pills("Mando:", ["Ambos", "Mandante", "Visitante"], default="Ambos", key="uj_venue")
+        with uj_cpersp:
+            if uj_target == "Clube":
+                uj_persp = st.pills("Perspectiva:", ["A favor", "Sofrido"], default="A favor", key="uj_persp")
+            else:
+                uj_persp = "A favor"
+        with uj_c3:
+            uj_cat = st.pills("Categoria:", list(CATEGORIES_UI_PT.keys()), default="Finalização", key="uj_cat")
+        with uj_c4:
+            uj_n = st.number_input("Últimos N jogos:", min_value=1, max_value=200, value=10, step=1, key="uj_n")
+
+        # Build match_ids considering venue filter
+        if uj_venue == 'Mandante':
+            mi_uj = tuple(filtered_matches[filtered_matches['home_team_id'].isin(
+                p_id_list if p_id_list else filtered_matches['home_team_id'].unique()
+            )]['match_id'].tolist()) if not filtered_matches.empty else ()
+        elif uj_venue == 'Visitante':
+            mi_uj = tuple(filtered_matches[filtered_matches['away_team_id'].isin(
+                p_id_list if p_id_list else filtered_matches['away_team_id'].unique()
+            )]['match_id'].tolist()) if not filtered_matches.empty else ()
+        else:
+            mi_uj = match_ids_list
+
+        if not filtered_matches.empty and mi_uj:
+            with st.spinner("Carregando últimos jogos..."):
+                df_uj = fetch_last_games(
+                    target=uj_target,
+                    category=uj_cat,
+                    match_ids=mi_uj,
+                    valid_team_ids=p_id_list,
+                    home_away=uj_venue,
+                    perspective=uj_persp,
+                    n_games=int(uj_n)
+                )
+
+            if not df_uj.empty:
+                # Build display columns: identity cols + category metrics (in defined order)
+                if uj_target == "Jogador":
+                    id_cols = ['Jogador', 'Clube', 'Competicao', 'Temporada', 'Jogo', 'Data']
+                else:
+                    id_cols = ['Clube', 'Competicao', 'Temporada', 'Jogo', 'Data']
+
+                cat_metrics_ordered = [m for m in CATEGORIES_UI_PT[uj_cat] if m in df_uj.columns]
+                extra_cols = [c for c in df_uj.columns if c not in id_cols and c not in cat_metrics_ordered and c not in ['MatchID', 'PlayerID']]
+                final_cols = [c for c in id_cols if c in df_uj.columns] + cat_metrics_ordered + extra_cols
+                df_uj_display = df_uj[final_cols]
+
+                # Format dict
+                fmt_uj = {}
+                for col in cat_metrics_ordered:
+                    if "%" in col:
+                        fmt_uj[col] = "{:.2f}%"
+                    elif col.startswith("xG") or col.startswith("xA") or col == "Gols Evitados":
+                        fmt_uj[col] = "{:.2f}"
+                    elif col == "Nota SofaScore":
+                        fmt_uj[col] = "{:.1f}"
+                    else:
+                        fmt_uj[col] = "{:.0f}"
+
+                st.caption(f"Exibindo os últimos **{uj_n}** jogos por {uj_target.lower()} — ordenados do mais recente para o mais antigo.")
+                styled_uj = df_uj_display.style.format(fmt_uj, na_rep="-")
+                st.dataframe(styled_uj, use_container_width=True, hide_index=True, height=700)
+            else:
+                st.info("Nenhum dado encontrado com os filtros atuais.")
+        else:
+            st.info("Nenhuma partida encontrada no período/rodada base.")
 
 elif nav_page == "Sequências":
     st.markdown('<h1 class="title-gradient">🔥 Analysis - Forma & Sequências</h1>', unsafe_allow_html=True)
